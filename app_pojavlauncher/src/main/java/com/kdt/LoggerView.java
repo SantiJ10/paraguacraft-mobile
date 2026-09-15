@@ -2,6 +2,7 @@ package com.kdt;
 
 import android.content.Context;
 import android.graphics.Typeface;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.View;
 import android.widget.ImageButton;
@@ -20,10 +21,50 @@ import net.kdt.pojavlaunch.R;
  * It has support for the Logger class
  */
 public class LoggerView extends ConstraintLayout {
+    /** Texto retenido en pantalla; el log completo sigue yendo a latestlog.txt. */
+    private static final int MAX_CHARS = 64 * 1024;
+    /** Los mods escupen cientos de lineas por segundo: refrescar por linea
+     *  disparaba un layout por cada una y congelaba el juego. */
+    private static final long FLUSH_MS = 100;
+
     private Logger.eventLogListener mLogListener;
     private ToggleButton mLogToggle;
     private DefocusableScrollView mScrollView;
     private TextView mLogTextView;
+
+    private final StringBuilder mPending = new StringBuilder();
+    private boolean mFlushScheduled = false;
+
+    private final Runnable mFlushPending = () -> {
+        String chunk;
+        synchronized (mPending) {
+            mFlushScheduled = false;
+            if (mPending.length() == 0) return;
+            chunk = mPending.toString();
+            mPending.setLength(0);
+        }
+        mLogTextView.append(chunk);
+        trimLog();
+        if (mScrollView.isKeepFocusing()) mScrollView.fullScroll(View.FOCUS_DOWN);
+    };
+
+    /** Descarta el principio del log para no crecer sin tope. */
+    private void trimLog() {
+        CharSequence text = mLogTextView.getText();
+        if (text.length() <= MAX_CHARS) return;
+        int cut = text.length() - MAX_CHARS;
+        int newline = TextUtils.indexOf(text, '\n', cut);
+        int from = newline >= 0 ? newline + 1 : cut;
+        mLogTextView.setText(text.subSequence(from, text.length()));
+    }
+
+    private void clearPending() {
+        synchronized (mPending) {
+            mPending.setLength(0);
+            mFlushScheduled = false;
+        }
+        removeCallbacks(mFlushPending);
+    }
 
 
     public LoggerView(@NonNull Context context) {
@@ -62,6 +103,7 @@ public class LoggerView extends ConstraintLayout {
                     if(isChecked) {
                         Logger.addLogListener(mLogListener);
                     }else{
+                        clearPending();
                         mLogTextView.setText("");
                         Logger.removeLogListener(mLogListener);
                     }
@@ -87,13 +129,17 @@ public class LoggerView extends ConstraintLayout {
         autoscrollToggle.setChecked(true);
 
         // Listen to logs
+        // Las lineas se acumulan y se vuelcan en lote: una sola pasada de layout
+        // cada FLUSH_MS en vez de una por linea.
         mLogListener = text -> {
             if(mLogTextView.getVisibility() != VISIBLE) return;
-            post(() -> {
-                mLogTextView.append(text + '\n');
-                if(mScrollView.isKeepFocusing()) mScrollView.fullScroll(View.FOCUS_DOWN);
-            });
-
+            boolean schedule;
+            synchronized (mPending) {
+                mPending.append(text).append('\n');
+                schedule = !mFlushScheduled;
+                mFlushScheduled = true;
+            }
+            if (schedule) postDelayed(mFlushPending, FLUSH_MS);
         };
     }
 

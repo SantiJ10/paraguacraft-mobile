@@ -8,6 +8,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <time.h>
 #include <environ/environ.h>
 
 #include "stdio_is.h"
@@ -28,11 +29,29 @@ static volatile jobject logListener = NULL;
 static int latestlog_fd = -1;
 
 
+// Sincronizar en cada linea bloqueaba el hilo de log contra el almacenamiento.
+// Forge, Fabric y Sodium escupen cientos de lineas por segundo al cargar, asi
+// que eso eran cientos de fdatasync compitiendo con la carga de chunks. Un sync
+// espaciado deja el log igual de util para diagnosticar un crash.
+#define LOG_SYNC_INTERVAL_NS (2LL * 1000000000LL)
+
+static long long last_sync_ns = 0;
+
+static long long monotonic_ns(void) {
+    struct timespec ts;
+    if(clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return (long long)ts.tv_sec * 1000000000LL + (long long)ts.tv_nsec;
+}
+
 static bool recordBuffer(char* buf, ssize_t len) {
     if(strstr(buf, "Session ID is")) return false;
     if(latestlog_fd != -1) {
         write(latestlog_fd, buf, len);
-        fdatasync(latestlog_fd);
+        long long now = monotonic_ns();
+        if(now - last_sync_ns >= LOG_SYNC_INTERVAL_NS) {
+            last_sync_ns = now;
+            fdatasync(latestlog_fd);
+        }
     }
     return true;
 }
@@ -82,6 +101,7 @@ Java_net_kdt_pojavlaunch_Logger_begin(JNIEnv *env, __attribute((unused)) jclass 
     dup2(pfd[1], 2);
 
     /* open latestlog.txt for writing */
+    last_sync_ns = monotonic_ns();
     const char* logFilePath = (*env)->GetStringUTFChars(env, logPath, NULL);
     latestlog_fd = open(logFilePath, O_WRONLY | O_TRUNC);
     if(latestlog_fd == -1) {

@@ -114,7 +114,7 @@ import java.util.Map;
 public final class Tools {
     public  static final float BYTE_TO_MB = 1024 * 1024;
     public static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
-    public static String APP_NAME = "Amethyst";
+    public static String APP_NAME = "Paraguacraft";
 
     public static final Gson GLOBAL_GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -220,7 +220,7 @@ public final class Tools {
         CTRLMAP_PATH = DIR_GAME_HOME + "/controlmap";
         CTRLDEF_FILE = DIR_GAME_HOME + "/controlmap/default.json";
         GAME_PROFILES_FILE = Tools.DIR_GAME_NEW + "/launcher_profiles.json";
-        switchDemo(isDemoProfile(ctx));
+        switchDemo(false);
     }
 
     @SuppressLint("PrivateApi")
@@ -581,15 +581,22 @@ public final class Tools {
                     // Looks for controllable_natives/SDL/<sdl_version_number>/libSDL2.so and
                     // deletes it. We can assume array index 0 because this dir gets fully deleted
                     // before the loop is started.
-                    if (deleted.isDirectory()) {
-                        if (deleted.listFiles().length > 0) {
-                            if (deleted.listFiles()[0].listFiles().length > 0) {
-                                if (deleted.listFiles()[0].listFiles()[0].exists()) {
-                                    deleted.listFiles()[0].listFiles()[0].delete();
-                                    break;
-                                }
-                            }
+                    File[] sdlVersions = deleted.listFiles();
+                    if (sdlVersions != null && sdlVersions.length > 0) {
+                        File[] natives = sdlVersions[0].listFiles();
+                        if (natives != null && natives.length > 0 && natives[0].exists()) {
+                            natives[0].delete();
+                            break;
                         }
+                    }
+                    // Sin pausa este bucle quemaba un nucleo entero durante toda la carga del
+                    // juego, justo cuando mas CPU hace falta. 20 ms sigue llegando antes de que
+                    // SdlNativeLibraryLoader cargue la libreria.
+                    try {
+                        Thread.sleep(20);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
                     }
                 }
                 // We can end here because SdlNativeLibraryLoader only extracts libSDL2.so once
@@ -846,8 +853,6 @@ public final class Tools {
         String mcArguments = versionInfo.minecraftArguments == null ?
                 fromStringArray(minecraftArgs.toArray(new String[0])):
                 versionInfo.minecraftArguments;
-
-        if(profile.isDemo()) mcArguments += " --demo";
 
         return JSONUtils.insertJSONValueList(splitAndFilterEmpty(mcArguments), varArgMap);
     }
@@ -1629,13 +1634,23 @@ public final class Tools {
     }
 
     public static @NonNull String pickRuntime(MinecraftProfile minecraftProfile, int targetJavaVersion) {
+        if (targetJavaVersion <= 8) {
+            String java8 = MultiRTUtils.getExactJreName(8);
+            if (java8 != null) {
+                minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + java8;
+                return java8;
+            }
+        }
         String runtime = getSelectedRuntime(minecraftProfile);
-        String profileRuntime = getRuntimeName(minecraftProfile.javaDir);
         Runtime pickedRuntime = MultiRTUtils.read(runtime);
-        if(runtime == null || pickedRuntime.javaVersion == 0 || pickedRuntime.javaVersion < targetJavaVersion) {
-            String preferredRuntime = MultiRTUtils.getNearestJreName(targetJavaVersion);
+        if(runtime == null || pickedRuntime.javaVersion == 0 || pickedRuntime.javaVersion < targetJavaVersion
+                || (targetJavaVersion <= 8 && pickedRuntime.javaVersion > 8)) {
+            String preferredRuntime = targetJavaVersion <= 8
+                    ? MultiRTUtils.getExactJreName(8)
+                    : MultiRTUtils.getNearestJreName(targetJavaVersion);
+            if(preferredRuntime == null) preferredRuntime = MultiRTUtils.getNearestJreName(targetJavaVersion);
             if(preferredRuntime == null) throw new RuntimeException("Failed to autopick runtime!");
-            if(profileRuntime != null) minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX+preferredRuntime;
+            minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX+preferredRuntime;
             runtime = preferredRuntime;
         }
         return runtime;
@@ -1820,6 +1835,10 @@ public final class Tools {
     }
 
     public static boolean isOnline(Context ctx) {
+        if (LauncherPreferences.DEFAULT_PREF != null
+                && LauncherPreferences.DEFAULT_PREF.getBoolean("pg_offline_mode", false)) {
+            return false;
+        }
         NetworkInfo info = getActiveNetworkInfo(ctx);
         if(info == null) return false;
         return (info.isConnected());
