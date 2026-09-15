@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.Base64;
+import android.util.LruCache;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -21,7 +22,11 @@ public class ProfileIconCache {
     // Data header format: data:<mime>;<encoding>,<data>
     private static final String DATA_HEADER = "data:";
     private static final String FALLBACK_ICON_NAME = "default";
-    private static final Map<String, Drawable> sIconCache = new HashMap<>();
+    /** Solo se ven un puñado de perfiles a la vez; sin tope el caché crecía
+     *  con cada instancia y nunca soltaba los bitmaps. */
+    private static final int MAX_CACHED_ICONS = 32;
+    private static final LruCache<String, Drawable> sIconCache = new LruCache<>(MAX_CACHED_ICONS);
+    // Acotado por naturaleza: un drawable por tipo de loader.
     private static final Map<String, Drawable> sStaticIconCache = new HashMap<>();
 
     /**
@@ -82,19 +87,34 @@ public class ProfileIconCache {
 
     private static int getStaticIconResource(String icon) {
         switch (icon) {
-            case "default": return R.drawable.ic_pojav_full;
+            case "default": return R.drawable.ic_paraguacraft;
             case "fabric": return R.drawable.ic_fabric;
             case "quilt": return R.drawable.ic_quilt;
             default: return -1;
         }
     }
 
+    /** Los iconos se dibujan en filas de lista, asi que decodificar el PNG
+     *  original entero podia reservar megabytes por perfil. */
+    private static final int MAX_ICON_PX = 128;
+
     private static Drawable readDataIcon(Resources resources, String icon) {
         byte[] iconData = extractIconData(icon);
         if(iconData == null) return null;
-        Bitmap iconBitmap = BitmapFactory.decodeByteArray(iconData, 0, iconData.length);
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeByteArray(iconData, 0, iconData.length, bounds);
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sampleSizeFor(Math.max(bounds.outWidth, bounds.outHeight));
+        Bitmap iconBitmap = BitmapFactory.decodeByteArray(iconData, 0, iconData.length, options);
         if(iconBitmap == null) return null;
         return new BitmapDrawable(resources, iconBitmap);
+    }
+
+    private static int sampleSizeFor(int largestSide) {
+        int sample = 1;
+        while(largestSide / sample > MAX_ICON_PX) sample *= 2;
+        return sample;
     }
 
     private static byte[] extractIconData(String inputString) {

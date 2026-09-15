@@ -225,7 +225,7 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
 
                 @Override
                 public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {
-                    // TODO: Triggers on eglSwapBuffers. Add a loading message and make it end here
+                    net.paraguacraft.mobile.GameLoadOverlay.onSwapBuffer();
                 }
             });
 
@@ -292,9 +292,12 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
             PojavApplication.sExecutorService.execute(()->{
                 try {
                     motionListener.onGenericMotion(this, copy);
-                    copy.recycle();
                 } catch (Throwable ignored) {
                     Log.e(TAG, "SDL failed to send motionevent!");
+                } finally {
+                    // Si SDL tira, el evento se quedaba sin devolver y el pool de
+                    // MotionEvent se vaciaba a fuerza de eventos de stick.
+                    copy.recycle();
                 }
             });
         }
