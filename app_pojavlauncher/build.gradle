@@ -55,14 +55,33 @@ def getVersionName = {
 }
 
 def getCFApiKey = {
-    String key = System.getenv("CURSEFORGE_API_KEY");
-    if(key != null) return key;
-    File curseforgeKeyFile = new File("$projectDir/curseforge_key.txt");
-    if(curseforgeKeyFile.canRead() && curseforgeKeyFile.isFile()) {
-        return curseforgeKeyFile.text;
+    String key = System.getenv("CURSEFORGE_API_KEY")
+    if (key != null && !key.trim().isEmpty()) return key.trim()
+    File curseforgeKeyFile = new File("$projectDir/curseforge_key.txt")
+    if (curseforgeKeyFile.canRead() && curseforgeKeyFile.isFile()) {
+        return curseforgeKeyFile.text.trim()
     }
-    logger.warn('BUILD: You have no CurseForge key, the curseforge api will get disabled !');
-    return "DUMMY";
+    def envFiles = [
+            new File("$rootDir/../Paraguacraft/launcher/.env"),
+            new File("$rootDir/.env"),
+            new File("$projectDir/.env")
+    ]
+    for (File envFile : envFiles) {
+        if (!envFile.isFile()) continue
+        envFile.eachLine { line ->
+            def t = line.trim()
+            if (t.startsWith("CURSEFORGE_API_KEY=")) {
+                def v = t.substring("CURSEFORGE_API_KEY=".length()).trim()
+                if ((v.startsWith("'") && v.endsWith("'")) || (v.startsWith('"') && v.endsWith('"'))) {
+                    v = v.substring(1, v.length() - 1)
+                }
+                if (!v.isEmpty()) key = v
+            }
+        }
+        if (key != null && !key.isEmpty()) return key
+    }
+    logger.warn('BUILD: You have no CurseForge key, the curseforge api will get disabled !')
+    return "DUMMY"
 }
 
 configurations {
@@ -100,12 +119,14 @@ android {
     }
 
     defaultConfig {
-        applicationId "org.angelauramc.amethyst"
+        applicationId "net.paraguacraft.mobile"
         minSdkVersion 21
         targetSdkVersion 34
-        versionCode 10000000
+        versionCode 10000016
         versionName getVersionName()
         multiDexEnabled true //important
+        buildConfigField "int", "PG_MOBILE_VERSION_CODE", "17"
+        buildConfigField "String", "PG_MOBILE_VERSION", "\"0.1.16\""
         resValue 'string', 'curseforge_api_key', getCFApiKey()
         externalNativeBuild {
             ndkBuild {
@@ -122,11 +143,11 @@ android {
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.customDebug
-            resValue "string", "app_name", "Amethyst (Debug)"
-            resValue "string", "app_short_name", "Amethyst (Debug)"
-            resValue 'string', 'application_package', 'org.angelauramc.amethyst.debug'
-            resValue 'string', 'storageProviderAuthorities', 'org.angelauramc.amethyst.scoped.gamefolder.debug'
-            resValue 'string', 'shareProviderAuthority', 'org.angelauramc.amethyst.scoped.controlfolder.debug'
+            resValue "string", "app_name", "Paraguacraft (Debug)"
+            resValue "string", "app_short_name", "Paraguacraft (Debug)"
+            resValue 'string', 'application_package', 'net.paraguacraft.mobile.debug'
+            resValue 'string', 'storageProviderAuthorities', 'net.paraguacraft.mobile.scoped.gamefolder.debug'
+            resValue 'string', 'shareProviderAuthority', 'net.paraguacraft.mobile.scoped.controlfolder.debug'
         }
         proguard {
             initWith debug
@@ -146,10 +167,10 @@ android {
             // defaultConfig already set
             // multiDexEnabled = true
             // debuggable = true
-            resValue "string", "app_name", "Amethyst"
-            resValue "string", "app_short_name", "Amethyst"
-            resValue 'string', 'storageProviderAuthorities', 'org.angelauramc.amethyst.scoped.gamefolder'
-            resValue 'string', 'application_package', 'org.angelauramc.amethyst'
+            resValue "string", "app_name", "Paraguacraft"
+            resValue "string", "app_short_name", "Paraguacraft"
+            resValue 'string', 'storageProviderAuthorities', 'net.paraguacraft.mobile.scoped.gamefolder'
+            resValue 'string', 'application_package', 'net.paraguacraft.mobile'
         }
         gplay {
             initWith release
