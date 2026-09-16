@@ -100,6 +100,31 @@ public final class DeviceProbe {
         return type >= Configuration.SCREENLAYOUT_SIZE_LARGE;
     }
 
+    /** Máximo Hz del panel, ignorando el "60" de batería / ajuste del sistema. */
+    public static int maxRefreshHz(Context ctx) {
+        try {
+            WindowManager wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
+            if (wm == null) return 60;
+            Display d = null;
+            if (Build.VERSION.SDK_INT >= 30) {
+                try { d = ctx.getDisplay(); } catch (Throwable ignored) {}
+            }
+            if (d == null) d = wm.getDefaultDisplay();
+            float max = d.getRefreshRate();
+            if (Build.VERSION.SDK_INT >= 23) {
+                Display.Mode[] modes = d.getSupportedModes();
+                if (modes != null) {
+                    for (Display.Mode m : modes) {
+                        if (m.getRefreshRate() > max) max = m.getRefreshRate();
+                    }
+                }
+            }
+            return clampHz(Math.round(max));
+        } catch (Throwable t) {
+            return 60;
+        }
+    }
+
     static int refreshHz(Context ctx) {
         try {
             int user = userRefreshSetting(ctx);
@@ -153,11 +178,12 @@ public final class DeviceProbe {
         return v;
     }
 
-    /** Pide a Android el Hz actual del usuario (si no, la app se queda en 60). */
+    /** Pide a Android el modo de pantalla. Con FPS ilimitado usa el máximo del panel, no el 60 de batería. */
     public static void applyToWindow(android.app.Activity act) {
         if (act == null) return;
         try {
-            int want = capture(act).refreshHz;
+            boolean uncap = DeviceTier.uncapFps(act);
+            int want = uncap ? maxRefreshHz(act) : capture(act).refreshHz;
             android.view.Window w = act.getWindow();
             if (w == null) return;
             android.view.WindowManager.LayoutParams lp = w.getAttributes();
@@ -166,12 +192,23 @@ public final class DeviceProbe {
                 android.view.Display d = act.getWindowManager().getDefaultDisplay();
                 android.view.Display.Mode[] modes = d.getSupportedModes();
                 android.view.Display.Mode best = d.getMode();
-                float bestDelta = 999f;
-                for (android.view.Display.Mode m : modes) {
-                    float delta = Math.abs(m.getRefreshRate() - want);
-                    if (delta < bestDelta && m.getPhysicalWidth() >= best.getPhysicalWidth() * 0.9f) {
-                        bestDelta = delta;
-                        best = m;
+                if (uncap) {
+                    float bestHz = -1f;
+                    int minW = (int) (best.getPhysicalWidth() * 0.9f);
+                    for (android.view.Display.Mode m : modes) {
+                        if (m.getPhysicalWidth() >= minW && m.getRefreshRate() > bestHz) {
+                            bestHz = m.getRefreshRate();
+                            best = m;
+                        }
+                    }
+                } else {
+                    float bestDelta = 999f;
+                    for (android.view.Display.Mode m : modes) {
+                        float delta = Math.abs(m.getRefreshRate() - want);
+                        if (delta < bestDelta && m.getPhysicalWidth() >= best.getPhysicalWidth() * 0.9f) {
+                            bestDelta = delta;
+                            best = m;
+                        }
                     }
                 }
                 lp.preferredDisplayModeId = best.getModeId();

@@ -55,8 +55,10 @@ public final class DeviceTier {
         LauncherPreferences.DEFAULT_PREF.edit()
                 .putBoolean(PREF_UNCAP_FPS, uncap)
                 .putBoolean("force_vsync", false)
+                .putBoolean("vsync_in_zink", false)
                 .apply();
         LauncherPreferences.PREF_FORCE_VSYNC = false;
+        LauncherPreferences.PREF_VSYNC_IN_ZINK = false;
     }
 
     /** 260 = ilimitado (vanilla/OptiFine). Si no, el Hz de la pantalla (60/90/120). */

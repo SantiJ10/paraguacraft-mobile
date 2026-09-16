@@ -20,6 +20,7 @@
 
 static __thread gl_render_window_t* currentBundle;
 static EGLDisplay g_EglDisplay;
+static int s_force_uncap = -1;
 
 bool gl_init() {
     if(!dlsym_EGL()) return false;
@@ -168,6 +169,10 @@ void gl_make_current(gl_render_window_t* bundle) {
     }
     if(eglMakeCurrent_p(g_EglDisplay, bundle->surface, bundle->surface, bundle->context)) {
         currentBundle = bundle;
+        const char *uncap = getenv("PG_UNCAP_FPS");
+        if (uncap && strcmp(uncap, "true") == 0) {
+            gl_swap_interval(0);
+        }
     }else {
         if(hasSetMainWindow) {
             pojav_environ->mainWindowBundle->newNativeSurface = NULL;
@@ -206,7 +211,12 @@ void gl_setup_window() {
 }
 
 void gl_swap_interval(int swapInterval) {
+    if (s_force_uncap < 0) {
+        const char *uncap = getenv("PG_UNCAP_FPS");
+        s_force_uncap = (uncap && strcmp(uncap, "true") == 0) ? 1 : 0;
+    }
     if(pojav_environ->force_vsync) swapInterval = 1;
+    else if (s_force_uncap) swapInterval = 0;
 
     eglSwapInterval_p(g_EglDisplay, swapInterval);
 }

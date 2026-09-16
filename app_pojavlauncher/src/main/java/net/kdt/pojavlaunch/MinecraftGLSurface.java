@@ -482,14 +482,7 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
         // Initial size set. Request immedate refresh, otherwise the initial width and height for the game
         // may be broken/unknown.
         refreshSize(true);
-        // Ensures we run at correct refresh rate (should also NOT change the resolution being used)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            float maxHz = 120f; // Set to 120 by default just to be safe
-            for (float altHz : getDisplay().getMode().getAlternativeRefreshRates()) {
-                maxHz = Math.max(maxHz, altHz);
-            }
-            surface.setFrameRate(maxHz, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT, Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS);
-        }
+        requestUnlockedFrameRate(surface);
 
         //Load Minecraft options:
         MCOptionUtils.set("fullscreen", "off");
@@ -512,6 +505,23 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
                 Tools.showError(getContext(), e, true);
             }
         }, "JVM Main thread").start();
+    }
+
+    /**
+     * ONLY_IF_SEAMLESS deja la superficie en 60 Hz si el panel no puede cambiar de modo
+     * sin un blink. Con FPS ilimitado hay que forzar el máximo del panel.
+     */
+    private void requestUnlockedFrameRate(Surface surface) {
+        float maxHz = net.paraguacraft.mobile.DeviceProbe.maxRefreshHz(getContext());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                surface.setFrameRate(maxHz,
+                        Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
+                        Surface.CHANGE_FRAME_RATE_ALWAYS);
+            } catch (Throwable t) {
+                Log.w("MGLSurface", "setFrameRate surface", t);
+            }
+        }
     }
 
     @Override

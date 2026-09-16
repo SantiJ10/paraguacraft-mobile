@@ -105,10 +105,20 @@ android {
             keyPassword "android"
         }
         customRelease {
-            storeFile file("aamc_upload.jks")
-            storePassword System.getenv("GPLAY_KEYSTORE_PASSWORD")
-            keyAlias "android_github_release"
-            keyPassword System.getenv("GPLAY_KEYSTORE_PASSWORD")
+            def ksPass = System.getenv("GPLAY_KEYSTORE_PASSWORD") ?: ""
+            def playKey = file("aamc_upload.jks")
+            if (!ksPass.trim().isEmpty() && playKey.exists()) {
+                storeFile playKey
+                storePassword ksPass
+                keyAlias "android_github_release"
+                keyPassword ksPass
+            } else {
+                // CI del fork no tiene el secret de Play. Firmar con debug para que assembleRelease no falle.
+                storeFile file("debug.keystore")
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            }
         }
         googlePlayBuild {
             storeFile file("upload.jks")
@@ -122,11 +132,11 @@ android {
         applicationId "net.paraguacraft.mobile"
         minSdkVersion 21
         targetSdkVersion 34
-        versionCode 10000018
+        versionCode 10000019
         versionName getVersionName()
         multiDexEnabled true //important
-        buildConfigField "int", "PG_MOBILE_VERSION_CODE", "19"
-        buildConfigField "String", "PG_MOBILE_VERSION", "\"0.1.18\""
+        buildConfigField "int", "PG_MOBILE_VERSION_CODE", "20"
+        buildConfigField "String", "PG_MOBILE_VERSION", "\"0.1.19\""
         resValue 'string', 'curseforge_api_key', getCFApiKey()
         externalNativeBuild {
             ndkBuild {

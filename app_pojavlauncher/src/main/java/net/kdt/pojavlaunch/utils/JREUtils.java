@@ -195,16 +195,25 @@ public class JREUtils {
 
         if(PREF_DUMP_SHADERS)
             envMap.put("LIBGL_VGPU_DUMP", "1");
-        if(PREF_VSYNC_IN_ZINK)
-            envMap.put("POJAV_VSYNC_IN_ZINK", "1");
+        boolean uncapFps = LauncherPreferences.DEFAULT_PREF.getBoolean(
+                net.paraguacraft.mobile.DeviceTier.PREF_UNCAP_FPS, false);
+        if(uncapFps) {
+            envMap.put("PG_UNCAP_FPS", "true");
+            envMap.put("LIBGL_VSYNC", "0");
+            envMap.put("vblank_mode", "0");
+            envMap.put("MESA_VK_WSI_PRESENT_MODE", "immediate");
+            envMap.put("FORCE_VSYNC", "false");
+        } else {
+            if(PREF_VSYNC_IN_ZINK)
+                envMap.put("POJAV_VSYNC_IN_ZINK", "1");
+            envMap.put("FORCE_VSYNC", String.valueOf(LauncherPreferences.PREF_FORCE_VSYNC));
+        }
         if(Tools.deviceHasHangingLinker())
             envMap.put("POJAV_EMUI_ITERATOR_MITIGATE", "1");
 
 
         // The OPEN GL version is changed according
         envMap.put("LIBGL_ES", (String) ExtraCore.getValue(ExtraConstants.OPEN_GL_VERSION));
-
-        envMap.put("FORCE_VSYNC", String.valueOf(LauncherPreferences.PREF_FORCE_VSYNC));
 
         envMap.put("MESA_GLSL_CACHE_DIR", Tools.DIR_CACHE.getAbsolutePath());
         envMap.put("force_glsl_extensions_warn", "true");

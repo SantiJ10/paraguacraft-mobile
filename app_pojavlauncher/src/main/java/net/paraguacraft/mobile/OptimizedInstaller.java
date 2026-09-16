@@ -288,6 +288,8 @@ public final class OptimizedInstaller {
             String patched;
             if (json.contains("\"fps_limit\"")) {
                 patched = json.replaceAll("\"fps_limit\"\\s*:\\s*\\d+", "\"fps_limit\":" + limit);
+            } else if (json.contains("\"fpsLimit\"")) {
+                patched = json.replaceAll("\"fpsLimit\"\\s*:\\s*\\d+", "\"fpsLimit\":" + limit);
             } else if (json.contains("\"performance\"")) {
                 patched = json.replaceFirst("\"performance\"\\s*:\\s*\\{",
                         "\"performance\":{\"fps_limit\":" + limit + ",");
