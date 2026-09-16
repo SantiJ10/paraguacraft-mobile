@@ -193,6 +193,7 @@ public final class OptimizedInstaller {
         rememberWrittenFps(fps);
         MCOptionUtils.set("maxFps", String.valueOf(fps));
         MCOptionUtils.set("enableVsync", "false");
+        MCOptionUtils.set("inactivityFpsLimit", "minimized");
         MCOptionUtils.set("fullscreen", "false");
         MCOptionUtils.set("useVbo", "true");
         MCOptionUtils.set("fboEnable", lite ? "false" : "true");
@@ -214,12 +215,13 @@ public final class OptimizedInstaller {
             MCOptionUtils.set("prioritizeChunkUpdates", "0");
         }
         MCOptionUtils.save();
+        disableDynamicFps(gameDir);
         if (legacy) writeOptiFineOptions(gameDir, gpu, uncap);
         writeTunedMarker(ctx, gameDir, mc, tier);
     }
 
     public static final String TUNED_MARKER = ".paraguacraft_optimized_tuned";
-    public static final String TUNED_VERSION = "v12";
+    public static final String TUNED_VERSION = "v13";
 
     public static void applyOptionsIfNeeded(Context ctx, File gameDir, String mc, String tier) {
         File marker = new File(gameDir, TUNED_MARKER);
@@ -250,10 +252,12 @@ public final class OptimizedInstaller {
         rememberWrittenFps(fps);
         MCOptionUtils.set("maxFps", String.valueOf(fps));
         MCOptionUtils.set("enableVsync", "false");
+        MCOptionUtils.set("inactivityFpsLimit", "minimized");
         MCOptionUtils.save();
 
         boolean uncap = DeviceTier.uncapFps(ctx) || fps >= UNLIMITED_FPS;
         syncSodiumFpsLimit(gameDir, uncap ? 0 : fps);
+        disableDynamicFps(gameDir);
         if (mc.equals("1.8.9") || mc.equals("1.12.2")) {
             patchColonFile(new File(gameDir, "optionsof.txt"), new String[][]{
                     {"ofSmoothFps", uncap ? "false" : "true"},
@@ -261,6 +265,24 @@ public final class OptimizedInstaller {
             });
         }
         writeTunedMarker(ctx, gameDir, mc, tier);
+    }
+
+    /**
+     * Dynamic FPS recorta FPS si cree que la ventana está tapada (los controles
+     * de Pojav cuentan). El tope lo pone el launcher o el juego, no este mod.
+     */
+    private static void disableDynamicFps(File gameDir) {
+        File cfg = new File(gameDir, "config");
+        //noinspection ResultOfMethodCallIgnored
+        cfg.mkdirs();
+        String body = "{\"enabled\":false}";
+        for (String name : new String[]{"dynamic_fps.json", "dynamicfps.json"}) {
+            try {
+                Tools.write(new File(cfg, name).getAbsolutePath(), body);
+            } catch (Exception e) {
+                Log.w(TAG, "dynamic-fps " + name, e);
+            }
+        }
     }
 
     private static void rememberWrittenFps(int fps) {

@@ -14,6 +14,8 @@
 #include <unistd.h>
 #include <log.h>
 
+void setNativeWindowSwapInterval(struct ANativeWindow* nativeWindow, int swapInterval);
+
 //
 // Created by maks on 17.09.2022.
 //
@@ -138,6 +140,7 @@ void gl_swap_surface(gl_render_window_t* bundle) {
         bundle->newNativeSurface = NULL;
         ANativeWindow_acquire(bundle->nativeSurface);
         ANativeWindow_setBuffersGeometry(bundle->nativeSurface, 0, 0, bundle->format);
+        setNativeWindowSwapInterval(bundle->nativeSurface, 0);
         bundle->surface = eglCreateWindowSurface_p(g_EglDisplay, bundle->config, bundle->nativeSurface, NULL);
     }else{
         LOGI("No new native surface, switching to 1x1 pbuffer");
@@ -185,12 +188,17 @@ void gl_make_current(gl_render_window_t* bundle) {
 }
 
 void gl_swap_buffers() {
+    if (s_force_uncap < 0) {
+        const char *uncap = getenv("PG_UNCAP_FPS");
+        s_force_uncap = (uncap && strcmp(uncap, "true") == 0) ? 1 : 0;
+    }
     if(currentBundle->state == STATE_RENDERER_NEW_WINDOW) {
         eglMakeCurrent_p(g_EglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT); //detach everything to destroy the old EGLSurface
         gl_swap_surface(currentBundle);
         eglMakeCurrent_p(g_EglDisplay, currentBundle->surface, currentBundle->surface, currentBundle->context);
         currentBundle->state = STATE_RENDERER_ALIVE;
     }
+    if (s_force_uncap) gl_swap_interval(0);
     if(currentBundle->surface != NULL)
         if(!eglSwapBuffers_p(g_EglDisplay, currentBundle->surface) && eglGetError_p() == EGL_BAD_SURFACE) {
             eglMakeCurrent_p(g_EglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);

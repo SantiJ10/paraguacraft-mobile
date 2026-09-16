@@ -223,10 +223,15 @@ struct ANativeWindow_real
 };
 // endregion
 
+#define NATIVE_WINDOW_SET_BUFFER_COUNT 4
+
 void setNativeWindowSwapInterval(struct ANativeWindow* nativeWindow, int swapInterval) {
-    if(!getenv("POJAV_VSYNC_IN_ZINK")) {
-        return;
-    }
+    if (nativeWindow == NULL) return;
+    const char *uncap = getenv("PG_UNCAP_FPS");
+    int forceUncap = uncap && strcmp(uncap, "true") == 0;
+    if (forceUncap) swapInterval = 0;
+    else if (!getenv("POJAV_VSYNC_IN_ZINK")) return;
+
     struct ANativeWindow_real* nativeWindowReal = (struct ANativeWindow_real*) nativeWindow;
     if(nativeWindowReal->common.magic != ANDROID_NATIVE_WINDOW_MAGIC) {
         LOGW("ANativeWindow magic does not match. Expected %i, got %i",
@@ -241,5 +246,8 @@ void setNativeWindowSwapInterval(struct ANativeWindow* nativeWindow, int swapInt
     int error;
     if((error = nativeWindowReal->setSwapInterval(nativeWindow, swapInterval)) != 0) {
         LOGW("Failed to set swap interval: %s", strerror(-error));
+    }
+    if (forceUncap && nativeWindowReal->perform) {
+        nativeWindowReal->perform(nativeWindow, NATIVE_WINDOW_SET_BUFFER_COUNT, 4);
     }
 }

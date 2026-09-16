@@ -111,8 +111,8 @@ public class OptimizedFragment extends Fragment {
                 + p.summary()
                 + "\nRenderer: " + (renderer.contains("gl4es") || renderer.equals("opengles2") ? "GL4ES" : "MobileGlues")
                 + "\nFPS: " + (uncap
-                ? ("ilimitado · panel " + DeviceProbe.maxRefreshHz(requireContext()) + " Hz (vsync del compositor si el overlay no pasa de eso)")
-                : DeviceTier.fpsCap(requireContext()) + " Hz de la pantalla")
+                ? "ilimitado (como PC). Si querés tope, usá este botón o el slider del juego."
+                : DeviceTier.fpsCap(requireContext()) + " Hz — tocá el botón para ilimitado")
                 + "\n1.8.9 instala Forge solo. 1.12.2 abre una ventana Java; cuando cierre, volvé acá.");
     }
 

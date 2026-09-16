@@ -211,9 +211,12 @@ public final class DeviceProbe {
                         }
                     }
                 }
-                lp.preferredDisplayModeId = best.getModeId();
+            lp.preferredDisplayModeId = best.getModeId();
             }
             w.setAttributes(lp);
+            if (Build.VERSION.SDK_INT >= 30) {
+                w.setPreferMinimalPostProcessing(uncap);
+            }
         } catch (Throwable ignored) {}
     }
 

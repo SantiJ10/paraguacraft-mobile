@@ -508,14 +508,16 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
     }
 
     /**
-     * ONLY_IF_SEAMLESS deja la superficie en 60 Hz si el panel no puede cambiar de modo
-     * sin un blink. Con FPS ilimitado hay que forzar el máximo del panel.
+     * Ilimitado = no atar el swap al panel. Un valor alto le dice a Android que esto
+     * es un juego que produce frames lo más rápido que puede, como en PC.
      */
     private void requestUnlockedFrameRate(Surface surface) {
-        float maxHz = net.paraguacraft.mobile.DeviceProbe.maxRefreshHz(getContext());
+        boolean uncap = net.kdt.pojavlaunch.prefs.LauncherPreferences.DEFAULT_PREF
+                .getBoolean(net.paraguacraft.mobile.DeviceTier.PREF_UNCAP_FPS, false);
+        float hz = uncap ? 1000f : net.paraguacraft.mobile.DeviceTier.fpsCap(getContext());
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             try {
-                surface.setFrameRate(maxHz,
+                surface.setFrameRate(hz,
                         Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
                         Surface.CHANGE_FRAME_RATE_ALWAYS);
             } catch (Throwable t) {

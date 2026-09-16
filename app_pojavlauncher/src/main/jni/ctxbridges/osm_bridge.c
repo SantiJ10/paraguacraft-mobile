@@ -60,6 +60,7 @@ void osm_swap_surfaces(osm_render_window_t* bundle) {
         bundle->newNativeSurface = NULL;
         ANativeWindow_acquire(bundle->nativeSurface);
         ANativeWindow_setBuffersGeometry(bundle->nativeSurface, 0, 0, WINDOW_FORMAT_RGBX_8888);
+        setNativeWindowSwapInterval(bundle->nativeSurface, 0);
         bundle->disable_rendering = false;
         return;
     }else {

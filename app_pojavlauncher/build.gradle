@@ -132,11 +132,11 @@ android {
         applicationId "net.paraguacraft.mobile"
         minSdkVersion 21
         targetSdkVersion 34
-        versionCode 10000019
+        versionCode 10000020
         versionName getVersionName()
         multiDexEnabled true //important
-        buildConfigField "int", "PG_MOBILE_VERSION_CODE", "20"
-        buildConfigField "String", "PG_MOBILE_VERSION", "\"0.1.19\""
+        buildConfigField "int", "PG_MOBILE_VERSION_CODE", "21"
+        buildConfigField "String", "PG_MOBILE_VERSION", "\"0.1.20\""
         resValue 'string', 'curseforge_api_key', getCFApiKey()
         externalNativeBuild {
             ndkBuild {
