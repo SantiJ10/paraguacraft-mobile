@@ -9,6 +9,33 @@
 
     <net.kdt.pojavlaunch.prefs.BackButtonPreference/>
 
+    <PreferenceCategory android:title="Paraguacraft">
+        <Preference
+            android:key="pg_wallpaper_setting"
+            android:title="Fondos"
+            android:summary="Tema del launcher o importá una foto."
+            android:icon="@drawable/ic_menu_news"
+            />
+        <Preference
+            android:key="pg_graphics_setting"
+            android:title="Perfil gráfico"
+            android:summary="Automático, rendimiento, equilibrado o calidad."
+            android:icon="@drawable/ic_setting_engine"
+            />
+        <Preference
+            android:key="pg_renderer_setting"
+            android:title="Renderizador"
+            android:summary="GL4ES, MobileGlues, Zink o LTW."
+            android:icon="@drawable/ic_setting_video"
+            />
+        <Preference
+            android:key="pg_controls_setting"
+            android:title="Controles táctiles"
+            android:summary="Clásicos o modernos, editor y mando."
+            android:icon="@drawable/ic_menu_custom_controls"
+            />
+    </PreferenceCategory>
+
     <PreferenceCategory
         android:title="@string/preference_category_main_categories"
         >
@@ -70,6 +97,11 @@
         android:title="@string/preference_ask_for_microphone_title"
         android:summary="@string/preference_ask_for_microphone_description"
         android:key="microphone_permission_request"
+        />
+    <Preference
+        android:title="Acerca de"
+        android:summary="Paraguacraft Mobile, basado en Amethyst (LGPL-3.0)"
+        android:key="paraguacraft_about"
         />
 
 

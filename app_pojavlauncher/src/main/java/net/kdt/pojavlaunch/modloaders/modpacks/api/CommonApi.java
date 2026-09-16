@@ -52,8 +52,6 @@ public class CommonApi implements ModpackApi {
         SearchResult[] results = commonApiSearchResult == null ?
                 new SearchResult[mModpackApis.length] : commonApiSearchResult.searchResults;
 
-        int totalSize = 0;
-
         Future<?>[] futures = new Future<?>[mModpackApis.length];
         for(int i = 0; i < mModpackApis.length; i++) {
             // If there is an array and its length is zero, this means that we've exhausted the results for this
@@ -71,20 +69,20 @@ public class CommonApi implements ModpackApi {
             cancelAllFutures(futures);
             return null;
         }
+        int totalSize = 0;
         boolean hasSuccessful = false;
-        // Count up all the results
         for(int i = 0; i < mModpackApis.length; i++) {
             Future<?> future = futures[i];
             if(future == null) continue;
             try {
                 SearchResult searchResult = results[i] = (SearchResult) future.get();
-                if(searchResult != null) hasSuccessful = true;
-                else continue;
-                totalSize += searchResult.totalResultCount;
+                if(searchResult != null) {
+                    hasSuccessful = true;
+                    totalSize += searchResult.totalResultCount;
+                }
             }catch (Exception e) {
-                cancelAllFutures(futures);
                 e.printStackTrace();
-                return null;
+                results[i] = null;
             }
         }
         if(!hasSuccessful) {

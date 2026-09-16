@@ -265,8 +265,11 @@ public class ProfileEditorFragment extends Fragment implements CropperUtils.Crop
         mTempProfile.javaDir = (selectedRuntime.name.equals("<Default>") || selectedRuntime.versionString == null)
                 ? null : Tools.LAUNCHERPROFILES_RTPREFIX + selectedRuntime.name;
 
-        if(mDefaultRenderer.getSelectedItemPosition() == mRenderNames.size()) mTempProfile.pojavRendererName = null;
-        else mTempProfile.pojavRendererName = mRenderNames.get(mDefaultRenderer.getSelectedItemPosition());
+        if(mDefaultRenderer.getSelectedItemPosition() == mRenderNames.size()) {
+            net.paraguacraft.mobile.DeviceTier.stampProfile(mTempProfile);
+        } else {
+            mTempProfile.pojavRendererName = mRenderNames.get(mDefaultRenderer.getSelectedItemPosition());
+        }
 
 
         LauncherProfiles.mainProfileJson.profiles.put(mProfileKey, mTempProfile);

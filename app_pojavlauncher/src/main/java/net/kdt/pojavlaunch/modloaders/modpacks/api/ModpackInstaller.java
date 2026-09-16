@@ -10,6 +10,8 @@ import net.kdt.pojavlaunch.modloaders.modpacks.imagecache.ModIconCache;
 import net.kdt.pojavlaunch.modloaders.modpacks.models.Constants;
 import net.kdt.pojavlaunch.modloaders.modpacks.models.ModDetail;
 import net.kdt.pojavlaunch.progresskeeper.DownloaderProgressWrapper;
+import net.kdt.pojavlaunch.multirt.MultiRTUtils;
+import net.kdt.pojavlaunch.prefs.LauncherPreferences;
 import net.kdt.pojavlaunch.utils.DownloadUtils;
 import net.kdt.pojavlaunch.utils.ZipUtils;
 import net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles;
@@ -71,10 +73,13 @@ public class ModpackInstaller {
         profile.name = modDetail.title;
         profile.lastVersionId = modLoaderInfo.getVersionId();
         profile.icon = ModIconCache.getBase64Image(modDetail.getIconCacheTag());
-
+        applyMobileDefaults(profile);
 
         LauncherProfiles.mainProfileJson.profiles.put(modpackName, profile);
         LauncherProfiles.write();
+        LauncherPreferences.DEFAULT_PREF.edit()
+                .putString(LauncherPreferences.PREF_KEY_CURRENT_PROFILE, modpackName)
+                .apply();
 
         return modLoaderInfo;
     }
@@ -161,13 +166,28 @@ public class ModpackInstaller {
         if (!modpackMcVersion.isBlank()) profile.lastVersionId = modpackMcVersion;
         if (modLoaderInfo != null && modLoaderInfo.getVersionId() != null)
             profile.lastVersionId = modLoaderInfo.getVersionId();
+        applyMobileDefaults(profile);
         LauncherProfiles.mainProfileJson.profiles.put(profileFolderName, profile);
         LauncherProfiles.write();
+        LauncherPreferences.DEFAULT_PREF.edit()
+                .putString(LauncherPreferences.PREF_KEY_CURRENT_PROFILE, profileFolderName)
+                .apply();
 
         return modLoaderInfo;
-}
+    }
 
-interface InstallFunction {
+    /** Java 8 + GL4ES en 1.8.9 / 1.12.2, igual que Optimized. */
+    static void applyMobileDefaults(MinecraftProfile profile) {
+        if (profile == null) return;
+        net.paraguacraft.mobile.DeviceTier.stampProfile(profile);
+        if (net.paraguacraft.mobile.DeviceTier.shouldUseGl4es(profile.lastVersionId)) {
+            profile.pojavRendererName = "opengles2";
+            String java8 = MultiRTUtils.getExactJreName(8);
+            if (java8 != null) profile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + java8;
+        }
+    }
+
+    interface InstallFunction {
         ModLoader installModpack(File modpackFile, File instanceDestination) throws IOException;
     }
 }

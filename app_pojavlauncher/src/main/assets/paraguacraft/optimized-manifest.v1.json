@@ -1,0 +1,811 @@
+{
+  "schema": "paraguacraft.optimized-manifest.v1",
+  "source": "launcher/src-tauri/src/core/loaders/optimized.rs",
+  "packId": "paraguacraft-optimized",
+  "packVersion": "1.0.0",
+  "tunedMarker": ".paraguacraft_optimized_tuned",
+  "tunedVersion": "v9",
+  "modrinthApi": "https://api.modrinth.com/v2",
+  "curseforgeApi": "https://api.curseforge.com/v1",
+  "hashes": "SHA-1 no está pineado en el launcher. Al instalar: GET /v2/version/{version_id} → files[0].hashes.sha1 y url. CF: GET /v1/mods/{projectId}/files/{fileId}.",
+  "loaderRule": "is_optifine_mc (1.8.9, 1.12.2) → Forge+OptiFine; is_fabric_mc (1.18.2, 1.20.1, 1.21.11, 26.2) → Fabric. NeoForge retirado (NEOFORGE_MCS vacío).",
+  "mobile": {
+    "shadersDefault": "off",
+    "skipSlugs": [
+      "voxy",
+      "nvidium",
+      "oculus"
+    ],
+    "skipShaderInstall": false,
+    "maxShaderTier": "media",
+    "rendererLow": "gl4es",
+    "leaveAndroidRamMb": [
+      1024,
+      1536
+    ],
+    "liteKeepHint": "sodium, lithium, ferrite-core, entityculling, moreculling, fabric-api, immediatelyfast, modmenu, cloth-config, fabric-language-kotlin, clumps, krypton, modernfix/modernfix-mvus, noisium/noisiumforked, dynamic-fps, badoptimizations, foamfix, vanillafix, phosphor, betterfps, fastworkbench, fastfurnace"
+  },
+  "javaRequiredMajor": {
+    "1.8.9": 8,
+    "1.12.2": 8,
+    "1.18.2": 17,
+    "1.20.1": 17,
+    "1.21.11": 21,
+    "26.2": 25
+  },
+  "packs": [
+    {
+      "mc": "1.8.9",
+      "loader": "forge",
+      "loaderVersion": "11.15.1.2318",
+      "optifine": {
+        "type": "HD_U",
+        "patch": "M5",
+        "official": "https://optifine.net",
+        "bmcl": "https://bmclapi2.bangbang93.com/optifine/1.8.9/HD_U/M5"
+      },
+      "javaMajor": 8,
+      "modrinth": [
+        {
+          "slug": "foamfix",
+          "versionId": "MqLKfrk2",
+          "mobileLite": true
+        }
+      ],
+      "curseforge": [
+        {
+          "slug": "betterfps",
+          "projectId": 229891,
+          "fileId": 2283238,
+          "mobileLite": true
+        },
+        {
+          "slug": "the-5zig-mod",
+          "projectId": 231387,
+          "fileId": 2389910,
+          "mobileLite": false
+        }
+      ]
+    },
+    {
+      "mc": "1.12.2",
+      "loader": "forge",
+      "loaderVersion": "14.23.5.2860",
+      "optifine": {
+        "type": "HD_U",
+        "patch": "G5",
+        "official": "https://optifine.net",
+        "bmcl": "https://bmclapi2.bangbang93.com/optifine/1.12.2/HD_U/G5"
+      },
+      "javaMajor": 8,
+      "modrinth": [
+        {
+          "slug": "foamfix",
+          "versionId": "oEGIQQnQ",
+          "mobileLite": true
+        },
+        {
+          "slug": "vanillafix",
+          "versionId": "1MMmIOiX",
+          "mobileLite": true
+        },
+        {
+          "slug": "clumps",
+          "versionId": "nZvGITpT",
+          "mobileLite": true
+        },
+        {
+          "slug": "ai-improvements",
+          "versionId": "kOyZhvg3",
+          "mobileLite": true
+        }
+      ],
+      "curseforge": [
+        {
+          "slug": "phosphor",
+          "projectId": 306770,
+          "fileId": 2912855,
+          "mobileLite": true
+        },
+        {
+          "slug": "betterfps",
+          "projectId": 229891,
+          "fileId": 2483393,
+          "mobileLite": true
+        },
+        {
+          "slug": "fastworkbench",
+          "projectId": 288885,
+          "fileId": 2803428,
+          "mobileLite": true
+        },
+        {
+          "slug": "fastfurnace",
+          "projectId": 299540,
+          "fileId": 2746053,
+          "mobileLite": true
+        }
+      ]
+    },
+    {
+      "mc": "1.18.2",
+      "loader": "fabric",
+      "loaderVersion": "resolve-at-install via fabric::versions().first()",
+      "javaMajor": 17,
+      "modrinth": [
+        {
+          "slug": "sodium",
+          "versionId": "74Y5Z8fo",
+          "mobileLite": true
+        },
+        {
+          "slug": "iris",
+          "versionId": "ogIRhnAJ",
+          "mobileLite": true
+        },
+        {
+          "slug": "indium",
+          "versionId": "H45YVREb",
+          "mobileLite": true
+        },
+        {
+          "slug": "fabric-api",
+          "versionId": "qk28POfr",
+          "mobileLite": true
+        },
+        {
+          "slug": "lithium",
+          "versionId": "ALnv7Npy",
+          "mobileLite": true
+        },
+        {
+          "slug": "ferrite-core",
+          "versionId": "776Z5oW9",
+          "mobileLite": true
+        },
+        {
+          "slug": "entityculling",
+          "versionId": "d3CbGntl",
+          "mobileLite": true
+        },
+        {
+          "slug": "immediatelyfast",
+          "versionId": "D73h6MNI",
+          "mobileLite": true
+        },
+        {
+          "slug": "modmenu",
+          "versionId": "nVxObSbX",
+          "mobileLite": true
+        },
+        {
+          "slug": "moreculling",
+          "versionId": "d2OS47y6",
+          "mobileLite": true
+        },
+        {
+          "slug": "sodium-extra",
+          "versionId": "DwCPxThW",
+          "mobileLite": false
+        },
+        {
+          "slug": "reeses-sodium-options",
+          "versionId": "BZU4WdR5",
+          "mobileLite": false
+        },
+        {
+          "slug": "cloth-config",
+          "versionId": "BLMp2TRt",
+          "mobileLite": true
+        },
+        {
+          "slug": "clumps",
+          "versionId": "hwWceR4m",
+          "mobileLite": true
+        },
+        {
+          "slug": "lmd",
+          "versionId": "YjlZw4Eo",
+          "mobileLite": false
+        },
+        {
+          "slug": "fastquit",
+          "versionId": "GKzeP8Zr",
+          "mobileLite": false
+        },
+        {
+          "slug": "fabric-language-kotlin",
+          "versionId": "bdhiINYC",
+          "mobileLite": true
+        },
+        {
+          "slug": "krypton",
+          "versionId": "vJQ7plH2",
+          "mobileLite": true
+        },
+        {
+          "slug": "modernfix",
+          "versionId": "LJ5N4YSl",
+          "mobileLite": true
+        },
+        {
+          "slug": "dynamic-fps",
+          "versionId": "maKzAqnY",
+          "mobileLite": true
+        },
+        {
+          "slug": "ixeris",
+          "versionId": "70H5sXBn",
+          "mobileLite": false
+        },
+        {
+          "slug": "forge-config-api-port",
+          "versionId": "XGKEYlsw",
+          "mobileLite": false
+        },
+        {
+          "slug": "get-it-together-drops",
+          "versionId": "v3JhWu9o",
+          "mobileLite": false
+        },
+        {
+          "slug": "fpsdisplay",
+          "versionId": "pxyG0qAH",
+          "mobileLite": false
+        }
+      ]
+    },
+    {
+      "mc": "1.20.1",
+      "loader": "fabric",
+      "loaderVersion": "resolve-at-install via fabric::versions().first()",
+      "javaMajor": 17,
+      "modrinth": [
+        {
+          "slug": "sodium",
+          "versionId": "ryOMVRuG",
+          "mobileLite": true
+        },
+        {
+          "slug": "iris",
+          "versionId": "s5eFLITc",
+          "mobileLite": true
+        },
+        {
+          "slug": "fabric-api",
+          "versionId": "xhLT3C5f",
+          "mobileLite": true
+        },
+        {
+          "slug": "lithium",
+          "versionId": "iEcXOkz4",
+          "mobileLite": true
+        },
+        {
+          "slug": "ferrite-core",
+          "versionId": "unerR5MN",
+          "mobileLite": true
+        },
+        {
+          "slug": "entityculling",
+          "versionId": "infkTCSN",
+          "mobileLite": true
+        },
+        {
+          "slug": "immediatelyfast",
+          "versionId": "iwYUrQJO",
+          "mobileLite": true
+        },
+        {
+          "slug": "modmenu",
+          "versionId": "lEkperf6",
+          "mobileLite": true
+        },
+        {
+          "slug": "moreculling",
+          "versionId": "3wkuUDPy",
+          "mobileLite": true
+        },
+        {
+          "slug": "sodium-extra",
+          "versionId": "mDbF0LZT",
+          "mobileLite": false
+        },
+        {
+          "slug": "reeses-sodium-options",
+          "versionId": "Rc9pkPug",
+          "mobileLite": false
+        },
+        {
+          "slug": "cloth-config",
+          "versionId": "2xQdCMyG",
+          "mobileLite": true
+        },
+        {
+          "slug": "clumps",
+          "versionId": "hefSwtn6",
+          "mobileLite": true
+        },
+        {
+          "slug": "lmd",
+          "versionId": "rOkgwJ12",
+          "mobileLite": false
+        },
+        {
+          "slug": "particle-core",
+          "versionId": "6es9W10B",
+          "mobileLite": false
+        },
+        {
+          "slug": "fastquit",
+          "versionId": "tNgyOUMr",
+          "mobileLite": false
+        },
+        {
+          "slug": "fzzy-config",
+          "versionId": "qkBkQTfU",
+          "mobileLite": false
+        },
+        {
+          "slug": "fabric-language-kotlin",
+          "versionId": "bdhiINYC",
+          "mobileLite": true
+        },
+        {
+          "slug": "krypton",
+          "versionId": "jiDwS0W1",
+          "mobileLite": true
+        },
+        {
+          "slug": "modernfix",
+          "versionId": "rPmgLeZC",
+          "mobileLite": true
+        },
+        {
+          "slug": "noisium",
+          "versionId": "erSJnRcq",
+          "mobileLite": true
+        },
+        {
+          "slug": "smooth-boot",
+          "versionId": "t9nlpa0M",
+          "mobileLite": false
+        },
+        {
+          "slug": "dynamic-fps",
+          "versionId": "QwPQBhiQ",
+          "mobileLite": true
+        },
+        {
+          "slug": "badoptimizations",
+          "versionId": "DIugITgU",
+          "mobileLite": true
+        },
+        {
+          "slug": "asynclogger",
+          "versionId": "2HCbK9wC",
+          "mobileLite": false
+        },
+        {
+          "slug": "ixeris",
+          "versionId": "R0Ia5zWt",
+          "mobileLite": false
+        },
+        {
+          "slug": "fism",
+          "versionId": "JZF3sYNu",
+          "mobileLite": false
+        },
+        {
+          "slug": "forge-config-api-port",
+          "versionId": "HvR3IdRE",
+          "mobileLite": false
+        },
+        {
+          "slug": "get-it-together-drops",
+          "versionId": "ATcsrMNy",
+          "mobileLite": false
+        },
+        {
+          "slug": "almanac",
+          "versionId": "QM6nx1Sa",
+          "mobileLite": false
+        },
+        {
+          "slug": "fpsdisplay",
+          "versionId": "WaO5IB1q",
+          "mobileLite": false
+        },
+        {
+          "slug": "renderscale",
+          "versionId": "u7FyypwR",
+          "mobileLite": false
+        }
+      ]
+    },
+    {
+      "mc": "1.21.11",
+      "loader": "fabric",
+      "loaderVersion": "resolve-at-install via fabric::versions().first()",
+      "javaMajor": 21,
+      "modrinth": [
+        {
+          "slug": "sodium",
+          "versionId": "NFkjnzWE",
+          "mobileLite": true
+        },
+        {
+          "slug": "iris",
+          "versionId": "fDpuVzVr",
+          "mobileLite": true
+        },
+        {
+          "slug": "fabric-api",
+          "versionId": "zGF3drOQ",
+          "mobileLite": true
+        },
+        {
+          "slug": "lithium",
+          "versionId": "Ow7wA0kG",
+          "mobileLite": true
+        },
+        {
+          "slug": "ferrite-core",
+          "versionId": "Ii0gP3D8",
+          "mobileLite": true
+        },
+        {
+          "slug": "entityculling",
+          "versionId": "sP0vNbeN",
+          "mobileLite": true
+        },
+        {
+          "slug": "immediatelyfast",
+          "versionId": "4EwhsTu7",
+          "mobileLite": true
+        },
+        {
+          "slug": "modmenu",
+          "versionId": "j2vTurvl",
+          "mobileLite": true
+        },
+        {
+          "slug": "sodium-extra",
+          "versionId": "yqY1efrC",
+          "mobileLite": false
+        },
+        {
+          "slug": "reeses-sodium-options",
+          "versionId": "P0MH4cn0",
+          "mobileLite": false
+        },
+        {
+          "slug": "fabric-language-kotlin",
+          "versionId": "bdhiINYC",
+          "mobileLite": true
+        },
+        {
+          "slug": "cloth-config",
+          "versionId": "xuX40TN5",
+          "mobileLite": true
+        },
+        {
+          "slug": "moreculling",
+          "versionId": "wOzykoLV",
+          "mobileLite": true
+        },
+        {
+          "slug": "clumps",
+          "versionId": "OgBE8Rz4",
+          "mobileLite": true
+        },
+        {
+          "slug": "lmd",
+          "versionId": "7gmpSYHk",
+          "mobileLite": false
+        },
+        {
+          "slug": "particle-core",
+          "versionId": "kIlv5noY",
+          "mobileLite": false
+        },
+        {
+          "slug": "fastquit",
+          "versionId": "ip2tVKLp",
+          "mobileLite": false
+        },
+        {
+          "slug": "scalablelux",
+          "versionId": "ju27pK32",
+          "mobileLite": false
+        },
+        {
+          "slug": "fzzy-config",
+          "versionId": "nSB6xGOS",
+          "mobileLite": false
+        },
+        {
+          "slug": "krypton",
+          "versionId": "O9LmWYR7",
+          "mobileLite": true
+        },
+        {
+          "slug": "modernfix-mvus",
+          "versionId": "yPCwXBn8",
+          "mobileLite": true
+        },
+        {
+          "slug": "noisiumforked",
+          "versionId": "VyMvRQKq",
+          "mobileLite": true
+        },
+        {
+          "slug": "smooth-boot",
+          "versionId": "gqFyBDHt",
+          "mobileLite": false
+        },
+        {
+          "slug": "better-block-entities",
+          "versionId": "VTUyYQyY",
+          "mobileLite": false
+        },
+        {
+          "slug": "fpsdisplay",
+          "versionId": "Tiz1VFDa",
+          "mobileLite": false
+        },
+        {
+          "slug": "renderscale",
+          "versionId": "e5ZPKfY7",
+          "mobileLite": false
+        },
+        {
+          "slug": "almanac",
+          "versionId": "Tcl38ycb",
+          "mobileLite": false
+        },
+        {
+          "slug": "placeholder-api",
+          "versionId": "qxjzQ9xY",
+          "mobileLite": false
+        },
+        {
+          "slug": "dynamic-fps",
+          "versionId": "Fab7e5Th",
+          "mobileLite": true
+        },
+        {
+          "slug": "badoptimizations",
+          "versionId": "Q3Dusz2j",
+          "mobileLite": true
+        }
+      ]
+    },
+    {
+      "mc": "26.2",
+      "loader": "fabric",
+      "loaderVersion": "resolve-at-install via fabric::versions().first()",
+      "javaMajor": 25,
+      "modrinth": [
+        {
+          "slug": "sodium",
+          "versionId": "2Yom1N68",
+          "mobileLite": true
+        },
+        {
+          "slug": "iris",
+          "versionId": "oaD6KQls",
+          "mobileLite": true
+        },
+        {
+          "slug": "fabric-api",
+          "versionId": "lVXlbH4w",
+          "mobileLite": true
+        },
+        {
+          "slug": "lithium",
+          "versionId": "UPNexAfy",
+          "mobileLite": true
+        },
+        {
+          "slug": "ferrite-core",
+          "versionId": "d5ddUdiB",
+          "mobileLite": true
+        },
+        {
+          "slug": "entityculling",
+          "versionId": "iiF6U3Ne",
+          "mobileLite": true
+        },
+        {
+          "slug": "immediatelyfast",
+          "versionId": "uJHxuQxy",
+          "mobileLite": true
+        },
+        {
+          "slug": "modmenu",
+          "versionId": "njXb639R",
+          "mobileLite": true
+        },
+        {
+          "slug": "moreculling",
+          "versionId": "SYFaYeMK",
+          "mobileLite": true
+        },
+        {
+          "slug": "sodium-extra",
+          "versionId": "Fu02wj4x",
+          "mobileLite": false
+        },
+        {
+          "slug": "reeses-sodium-options",
+          "versionId": "PH4SPorH",
+          "mobileLite": false
+        },
+        {
+          "slug": "cloth-config",
+          "versionId": "Nv3xnWXd",
+          "mobileLite": true
+        },
+        {
+          "slug": "clumps",
+          "versionId": "dEMopoOJ",
+          "mobileLite": true
+        },
+        {
+          "slug": "lmd",
+          "versionId": "B2nrDb9C",
+          "mobileLite": false
+        },
+        {
+          "slug": "particle-core",
+          "versionId": "VFv6uQKM",
+          "mobileLite": false
+        },
+        {
+          "slug": "scalablelux",
+          "versionId": "EKLUURiy",
+          "mobileLite": false
+        },
+        {
+          "slug": "fzzy-config",
+          "versionId": "EQSFgLYw",
+          "mobileLite": false
+        },
+        {
+          "slug": "fabric-language-kotlin",
+          "versionId": "bdhiINYC",
+          "mobileLite": true
+        },
+        {
+          "slug": "modernfix-mvus",
+          "versionId": "TUWH6NZu",
+          "mobileLite": true
+        },
+        {
+          "slug": "noisiumforked",
+          "versionId": "rWMnuBfv",
+          "mobileLite": true
+        },
+        {
+          "slug": "dynamic-fps",
+          "versionId": "pC2JjFw1",
+          "mobileLite": true
+        },
+        {
+          "slug": "better-block-entities",
+          "versionId": "Sr2VjbpG",
+          "mobileLite": false
+        },
+        {
+          "slug": "badoptimizations",
+          "versionId": "JmPs4Wie",
+          "mobileLite": true
+        },
+        {
+          "slug": "asynclogger",
+          "versionId": "MiNRI6LE",
+          "mobileLite": false
+        },
+        {
+          "slug": "ixeris",
+          "versionId": "6I2BEXfJ",
+          "mobileLite": false
+        },
+        {
+          "slug": "gnetum",
+          "versionId": "FYk1Bn5B",
+          "mobileLite": false
+        },
+        {
+          "slug": "zfastnoise",
+          "versionId": "QBcjDrhr",
+          "mobileLite": false
+        },
+        {
+          "slug": "fism",
+          "versionId": "4HgtdJ7f",
+          "mobileLite": false
+        },
+        {
+          "slug": "forge-config-api-port",
+          "versionId": "rSd3GiG8",
+          "mobileLite": false
+        },
+        {
+          "slug": "get-it-together-drops",
+          "versionId": "BOGqc3kp",
+          "mobileLite": false
+        },
+        {
+          "slug": "noxesium",
+          "versionId": "Qx0oq0L0",
+          "mobileLite": false
+        },
+        {
+          "slug": "almanac",
+          "versionId": "meYgadd9",
+          "mobileLite": false
+        },
+        {
+          "slug": "fpsdisplay",
+          "versionId": "inkvL2AV",
+          "mobileLite": false
+        },
+        {
+          "slug": "renderscale",
+          "versionId": "EJ7KZw6k",
+          "mobileLite": false
+        },
+        {
+          "slug": "placeholder-api",
+          "versionId": "NDqH16LT",
+          "mobileLite": false
+        }
+      ]
+    }
+  ],
+  "retired": {
+    "neoforge": {
+      "id": "paraguacraft-optimized-neoforge",
+      "mcs": [],
+      "note": "NEOFORGE_MCS vacío. Pins 1.20.1 NeoForge existen en código pero no se ofrecen.",
+      "pinsFileLines": "197-224"
+    }
+  },
+  "pcShadersDoNotInstallOnMobile": {
+    "irisLow": [
+      "truelight-fx-lite",
+      "makeup-ultra-fast-shaders",
+      "potato-shaders",
+      "essentials-shader",
+      "lite-shaders",
+      "super-duper-vanilla",
+      "miniature-shader",
+      "blocky-shader",
+      "vanilla-plus-shader",
+      "sildurs-basic-shaders"
+    ],
+    "irisMid": [
+      "solas-shader",
+      "bsl-shaders",
+      "complementary-reimagined",
+      "mellow",
+      "sildurs-vibrant-shaders",
+      "daybreak-shader",
+      "truelightfx"
+    ],
+    "irisHigh": [
+      "complementary-unbound",
+      "rethinking-voxels",
+      "photon-shader",
+      "insanity-shader",
+      "hysteria-shaders"
+    ],
+    "optifine": [
+      "sildurs-basic-shaders",
+      "sildurs-vibrant-shaders",
+      "bsl-shaders"
+    ]
+  }
+}

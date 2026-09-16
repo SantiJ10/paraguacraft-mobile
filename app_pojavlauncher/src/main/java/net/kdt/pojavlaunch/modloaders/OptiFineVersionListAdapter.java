@@ -7,34 +7,47 @@ import android.widget.BaseExpandableListAdapter;
 import android.widget.ExpandableListAdapter;
 import android.widget.TextView;
 
+import net.paraguacraft.mobile.PgVersions;
+
+import java.util.ArrayList;
+import java.util.List;
+
 public class OptiFineVersionListAdapter extends BaseExpandableListAdapter implements ExpandableListAdapter {
 
-    private final OptiFineUtils.OptiFineVersions mOptiFineVersions;
+    private final List<String> mMinecraftVersions = new ArrayList<>();
+    private final List<List<OptiFineUtils.OptiFineVersion>> mOptifineVersions = new ArrayList<>();
     private final LayoutInflater mLayoutInflater;
 
     public OptiFineVersionListAdapter(OptiFineUtils.OptiFineVersions optiFineVersions, LayoutInflater mLayoutInflater) {
-        mOptiFineVersions = optiFineVersions;
         this.mLayoutInflater = mLayoutInflater;
+        if (optiFineVersions == null || optiFineVersions.minecraftVersions == null) return;
+        for (int i = 0; i < optiFineVersions.minecraftVersions.size(); i++) {
+            String mc = optiFineVersions.minecraftVersions.get(i);
+            if (!PgVersions.isReleaseId(mc)) continue;
+            if (optiFineVersions.optifineVersions == null || i >= optiFineVersions.optifineVersions.size()) continue;
+            mMinecraftVersions.add(mc);
+            mOptifineVersions.add(optiFineVersions.optifineVersions.get(i));
+        }
     }
 
     @Override
     public int getGroupCount() {
-        return mOptiFineVersions.minecraftVersions.size();
+        return mMinecraftVersions.size();
     }
 
     @Override
     public int getChildrenCount(int i) {
-        return mOptiFineVersions.optifineVersions.get(i).size();
+        return mOptifineVersions.get(i).size();
     }
 
     @Override
     public Object getGroup(int i) {
-        return mOptiFineVersions.minecraftVersions.get(i);
+        return mMinecraftVersions.get(i);
     }
 
     @Override
     public Object getChild(int i, int i1) {
-        return mOptiFineVersions.optifineVersions.get(i).get(i1);
+        return mOptifineVersions.get(i).get(i1);
     }
 
     @Override

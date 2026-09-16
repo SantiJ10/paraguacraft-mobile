@@ -42,6 +42,7 @@ import net.kdt.pojavlaunch.extra.ExtraConstants;
 import net.kdt.pojavlaunch.extra.ExtraCore;
 import net.kdt.pojavlaunch.extra.ExtraListener;
 import net.kdt.pojavlaunch.value.MinecraftAccount;
+import net.paraguacraft.mobile.SkinHelper;
 
 import java.io.File;
 import java.io.IOException;
@@ -136,6 +137,7 @@ public class mcAccountSpinner extends AppCompatSpinner implements AdapterView.On
         if(value[1].isEmpty()){ // Test mode
             MinecraftAccount account = new MinecraftAccount();
             account.username = value[0];
+            account.profileId = net.paraguacraft.mobile.OfflineUuid.of(value[0]);
             try {
                 account.save();
             }catch (IOException e){
@@ -331,32 +333,41 @@ public class mcAccountSpinner extends AppCompatSpinner implements AdapterView.On
         }
 
         mSelectecAccount = selectedAccount;
+        if (mSelectecAccount != null) {
+            SkinHelper.activateAccount(getContext(), mSelectecAccount);
+        }
         setImageFromSelectedAccount();
+        AccountAdapter adapter = getAdapter() instanceof AccountAdapter ? (AccountAdapter) getAdapter() : null;
+        if (adapter != null) adapter.invalidateHeads();
+        if (mSelectecAccount != null && !mSelectecAccount.isLocal()) {
+            MinecraftAccount acc = mSelectecAccount;
+            new Thread(() -> {
+                try {
+                    acc.updateSkinFace();
+                } catch (Exception ignored) {}
+                Tools.runOnUiThread(() -> {
+                    if (mSelectecAccount == acc) {
+                        setImageFromSelectedAccount();
+                        if (getAdapter() instanceof AccountAdapter) {
+                            ((AccountAdapter) getAdapter()).invalidateHeads();
+                        }
+                    }
+                });
+            }, "pg-skin-head").start();
+        }
     }
 
-    @Deprecated()
-    /* Legacy behavior, update the head image manually for the selected account */
+    /** Update the closed spinner head. Do not recycle bitmaps still shown in the dropdown. */
     private void setImageFromSelectedAccount(){
-        BitmapDrawable oldBitmapDrawable = mHeadDrawable;
-
-        if(mSelectecAccount != null){
-            View layout = getSelectedView();
-            if(layout != null){
-                ExtendedTextView view = layout.findViewById(R.id.account_item);
-                Bitmap bitmap = mSelectecAccount.getSkinFace();
-                if(bitmap != null) {
-                    mHeadDrawable = new BitmapDrawable(getResources(), bitmap);
-                    view.setCompoundDrawables(mHeadDrawable, null, null, null);
-                }else{
-                    view.setCompoundDrawables(null, null, null, null);
-                }
-                view.postProcessDrawables();
-            }
-        }
-
-        if(oldBitmapDrawable != null){
-            oldBitmapDrawable.getBitmap().recycle();
-        }
+        if(mSelectecAccount == null) return;
+        View layout = getSelectedView();
+        if(layout == null) return;
+        ExtendedTextView view = layout.findViewById(R.id.account_item);
+        if (view == null) return;
+        Bitmap bitmap = SkinHelper.headOrSteve(mSelectecAccount.username);
+        mHeadDrawable = new BitmapDrawable(getResources(), bitmap);
+        view.setCompoundDrawables(mHeadDrawable, null, null, null);
+        view.postProcessDrawables();
     }
 
     private class AccountAdapter extends ArrayAdapter<String> {
@@ -385,10 +396,12 @@ public class mcAccountSpinner extends AppCompatSpinner implements AdapterView.On
                 String username = super.getItem(position);
                 Drawable accountHead = mImageCache.get(username);
                 if (accountHead == null){
-                    accountHead = new BitmapDrawable(parent.getResources(), MinecraftAccount.getSkinFace(username));
+                    Bitmap head = SkinHelper.headOrSteve(username);
+                    accountHead = new BitmapDrawable(parent.getResources(), head);
                     mImageCache.put(username, accountHead);
                 }
                 textview.setCompoundDrawables(accountHead, null, null, null);
+                textview.postProcessDrawables();
 
                 deleteButton.setVisibility(View.VISIBLE);
                 deleteButton.setOnClickListener(v -> {
@@ -403,9 +416,25 @@ public class mcAccountSpinner extends AppCompatSpinner implements AdapterView.On
         @NonNull
         @Override
         public View getView(int position, View convertView, @NonNull ViewGroup parent) {
-            View view = getDropDownView(position, convertView, parent);
-            view.findViewById(R.id.delete_account_button).setVisibility(View.GONE);
-            return view;
+            if(convertView == null){
+                convertView = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_minecraft_account, parent, false);
+            }
+            ExtendedTextView textview = convertView.findViewById(R.id.account_item);
+            convertView.findViewById(R.id.delete_account_button).setVisibility(View.GONE);
+            textview.setText(super.getItem(position));
+            if(position == 0) {
+                textview.setCompoundDrawables(ResourcesCompat.getDrawable(parent.getResources(), R.drawable.ic_add, null), null, null, null);
+            } else {
+                String username = super.getItem(position);
+                Bitmap head = SkinHelper.headOrSteve(username);
+                textview.setCompoundDrawables(new BitmapDrawable(parent.getResources(), head), null, null, null);
+            }
+            textview.postProcessDrawables();
+            return convertView;
+        }
+
+        void invalidateHeads() {
+            mImageCache.clear();
         }
 
         private void showDeleteDialog(Context context, int position) {

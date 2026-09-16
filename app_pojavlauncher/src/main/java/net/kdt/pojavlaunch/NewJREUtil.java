@@ -76,17 +76,53 @@ public class NewJREUtil {
     }
 
 
+    /** Mojang "jre-legacy" and missing javaVersion both mean Java 8 (Forge 1.12.2 / 1.8.9). */
+    public static int requiredJavaMajor(JMinecraftVersionList.Version versionInfo) {
+        if (versionInfo == null || versionInfo.javaVersion == null) return 8;
+        if (versionInfo.javaVersion.component != null
+                && versionInfo.javaVersion.component.equalsIgnoreCase("jre-legacy")) {
+            return 8;
+        }
+        int major = versionInfo.javaVersion.majorVersion;
+        return major > 0 ? major : 8;
+    }
+
+    /** LaunchWrapper (Forge ≤ 1.12.2) crashes on Java 9+ with URLClassLoader ClassCastException. */
+    public static boolean needsJava8(int majorVersion) {
+        return majorVersion <= 8;
+    }
+
     /** @return true if everything is good, false otherwise.  */
     public static boolean installNewJreIfNeeded(Activity activity, JMinecraftVersionList.Version versionInfo) {
-        //Now we have the reliable information to check if our runtime settings are good enough
-        if (versionInfo.javaVersion == null || versionInfo.javaVersion.component.equalsIgnoreCase("jre-legacy"))
-            return true;
-
-        int gameRequiredVersion = versionInfo.javaVersion.majorVersion;
+        int gameRequiredVersion = requiredJavaMajor(versionInfo);
 
         LauncherProfiles.load();
         AssetManager assetManager = activity.getAssets();
         MinecraftProfile minecraftProfile = LauncherProfiles.getCurrentProfile();
+
+        // LaunchWrapper cannot run on Java 21. Never keep External-21 for 1.8.9 / 1.12.2.
+        if (needsJava8(gameRequiredVersion)) {
+            if (MultiRTUtils.getExactJreName(8) == null) {
+                try {
+                    tryDownloadRuntime(activity, 8);
+                } catch (Exception e) {
+                    Log.e("NewJREAuto", "Java 8 download failed", e);
+                    showRuntimeFail(activity, versionInfo);
+                    return false;
+                }
+            }
+            String java8 = MultiRTUtils.getExactJreName(8);
+            if (java8 == null) {
+                showRuntimeFail(activity, versionInfo);
+                return false;
+            }
+            if (minecraftProfile != null) {
+                minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + java8;
+                LauncherProfiles.write();
+            }
+            return true;
+        }
+
         String profileRuntime = Tools.getSelectedRuntime(minecraftProfile);
         Runtime runtime = MultiRTUtils.read(profileRuntime);
         // Partly trust the user with his own selection, if the game can even try to run in this case
@@ -160,7 +196,7 @@ public class NewJREUtil {
 
     private static void showRuntimeFail(Activity activity, JMinecraftVersionList.Version verInfo) {
         Tools.dialogOnUiThread(activity, activity.getString(R.string.global_error),
-                activity.getString(R.string.multirt_nocompatiblert, verInfo.javaVersion.majorVersion));
+                activity.getString(R.string.multirt_nocompatiblert, requiredJavaMajor(verInfo)));
     }
 
     public static boolean isJavaVersionAvailableForDownload(int version) {

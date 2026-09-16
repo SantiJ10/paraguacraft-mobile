@@ -12,6 +12,7 @@ import net.kdt.pojavlaunch.JMinecraftVersionList;
 import net.kdt.pojavlaunch.R;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.utils.FilteredSubList;
+import net.paraguacraft.mobile.PgVersions;
 
 import java.io.File;
 import java.util.Arrays;
@@ -31,10 +32,8 @@ public class VersionListAdapter extends BaseExpandableListAdapter implements Exp
         mHideCustomVersions = hideCustomVersions;
         mLayoutInflater = (LayoutInflater) ctx.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
 
-        List<JMinecraftVersionList.Version> releaseList = new FilteredSubList<>(versionList, item -> item.type.equals("release"));
-        List<JMinecraftVersionList.Version> snapshotList = new FilteredSubList<>(versionList, item -> item.type.equals("snapshot"));
-        List<JMinecraftVersionList.Version> betaList = new FilteredSubList<>(versionList, item -> item.type.equals("old_beta"));
-        List<JMinecraftVersionList.Version> alphaList = new FilteredSubList<>(versionList, item -> item.type.equals("old_alpha"));
+        List<JMinecraftVersionList.Version> releaseList = new FilteredSubList<>(versionList,
+                item -> "release".equals(item.type) && PgVersions.isReleaseId(item.id));
 
         // Query installed versions
         mInstalledVersions = new File(Tools.DIR_GAME_NEW + "/versions").list();
@@ -43,23 +42,17 @@ public class VersionListAdapter extends BaseExpandableListAdapter implements Exp
 
         if(!areInstalledVersionsAvailable()){
             mGroups = new String[]{
-                    ctx.getString(R.string.mcl_setting_veroption_release),
-                    ctx.getString(R.string.mcl_setting_veroption_snapshot),
-                    ctx.getString(R.string.mcl_setting_veroption_oldbeta),
-                    ctx.getString(R.string.mcl_setting_veroption_oldalpha)
+                    ctx.getString(R.string.mcl_setting_veroption_release)
             };
-            mData = new List[]{ releaseList, snapshotList, betaList, alphaList};
-            mSnapshotListPosition = 1;
+            mData = new List[]{ releaseList };
+            mSnapshotListPosition = -1;
         }else{
             mGroups = new String[]{
                     ctx.getString(R.string.mcl_setting_veroption_installed),
-                    ctx.getString(R.string.mcl_setting_veroption_release),
-                    ctx.getString(R.string.mcl_setting_veroption_snapshot),
-                    ctx.getString(R.string.mcl_setting_veroption_oldbeta),
-                    ctx.getString(R.string.mcl_setting_veroption_oldalpha)
+                    ctx.getString(R.string.mcl_setting_veroption_release)
             };
-            mData = new List[]{Arrays.asList(mInstalledVersions), releaseList, snapshotList, betaList, alphaList};
-            mSnapshotListPosition = 2;
+            mData = new List[]{Arrays.asList(mInstalledVersions), releaseList};
+            mSnapshotListPosition = -1;
         }
     }
 

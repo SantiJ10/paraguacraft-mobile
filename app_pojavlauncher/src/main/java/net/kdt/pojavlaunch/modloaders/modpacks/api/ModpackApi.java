@@ -54,8 +54,10 @@ public interface ModpackApi {
      * @param selectedVersion The selected version
      */
     default void handleInstallation(Context context, ModDetail modDetail, int selectedVersion) {
-        // Doing this here since when starting installation, the progress does not start immediately
-        // which may lead to two concurrent installations (very bad)
+        if (modDetail != null && !modDetail.isModpack) {
+            Tools.runOnUiThread(() -> net.paraguacraft.mobile.StoreDest.promptThenInstall(context, modDetail, selectedVersion));
+            return;
+        }
         ProgressLayout.setProgress(ProgressLayout.INSTALL_MODPACK, 0, R.string.global_waiting);
         PojavApplication.sExecutorService.execute(() -> {
             try {

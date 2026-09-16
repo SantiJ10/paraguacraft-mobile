@@ -132,6 +132,10 @@ public class ModItemAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
         return VIEW_TYPE_LOADING;
     }
 
+    public boolean isFooter(int position) {
+        return getItemViewType(position) == VIEW_TYPE_LOADING;
+    }
+
     @Override
     public void onUpdateTaskCount(int taskCount) {
         Tools.runOnUiThread(()->{
@@ -150,7 +154,7 @@ public class ModItemAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
 
         private ModDetail mModDetail = null;
         private ModItem mModItem = null;
-        private final TextView mTitle, mDescription;
+        private final TextView mTitle, mDescription, mMeta;
         private final ImageView mIconView, mSourceView;
         private View mExtendedLayout;
         private Spinner mExtendedSpinner;
@@ -176,7 +180,7 @@ public class ModItemAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
                     mExtendedErrorTextView = mExtendedLayout.findViewById(R.id.mod_extended_error_textview);
 
                     mExtendedButton.setOnClickListener(v1 -> mModpackApi.handleInstallation(
-                            mExtendedButton.getContext().getApplicationContext(),
+                            mExtendedButton.getContext(),
                             mModDetail,
                             mExtendedSpinner.getSelectedItemPosition()));
                     mExtendedSpinner.setAdapter(mLoadingAdapter);
@@ -224,6 +228,7 @@ public class ModItemAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             // Define click listener for the ViewHolder's View
             mTitle = view.findViewById(R.id.mod_title_textview);
             mDescription = view.findViewById(R.id.mod_body_textview);
+            mMeta = view.findViewById(R.id.mod_meta_textview);
             mIconView = view.findViewById(R.id.mod_thumbnail_imageview);
             mSourceView = view.findViewById(R.id.mod_source_imageview);
         }
@@ -260,6 +265,10 @@ public class ModItemAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder
             mSourceView.setImageResource(getSourceDrawable(item.apiSource));
             mTitle.setText(item.title);
             mDescription.setText(item.description);
+            if (mMeta != null) {
+                String src = item.apiSource == Constants.SOURCE_MODRINTH ? "Modrinth" : "CurseForge";
+                mMeta.setText(src + " · Cualquier cargador");
+            }
 
             if(hasExtended()){
                 closeDetailedView();

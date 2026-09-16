@@ -89,6 +89,8 @@
 			android:visibility="gone"
 			/>
 
+		<include layout="@layout/include_pg_load_overlay"/>
+
 	</FrameLayout>
 
 	<ListView

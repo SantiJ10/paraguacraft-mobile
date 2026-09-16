@@ -1,6 +1,7 @@
 package net.kdt.pojavlaunch;
 
 import android.content.*;
+import android.content.pm.ActivityInfo;
 import android.os.*;
 import androidx.appcompat.app.*;
 import net.kdt.pojavlaunch.utils.*;
@@ -16,8 +17,10 @@ public abstract class BaseActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         super.onCreate(savedInstanceState);
         LocaleUtils.setLocale(this);
+        net.paraguacraft.mobile.DeviceProbe.applyToWindow(this);
         Tools.setFullscreen(this, setFullscreen());
         Tools.updateWindowSize(this);
     }

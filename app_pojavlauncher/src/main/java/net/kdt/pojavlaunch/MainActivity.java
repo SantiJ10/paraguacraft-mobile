@@ -76,6 +76,8 @@ import net.kdt.pojavlaunch.utils.TouchControllerUtils;
 import net.kdt.pojavlaunch.value.MinecraftAccount;
 import net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles;
 import net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile;
+import net.paraguacraft.mobile.ControlScheme;
+import net.paraguacraft.mobile.PhysicalInput;
 
 import org.libsdl.app.SDL;
 import org.libsdl.app.SDLSurface;
@@ -118,6 +120,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     public ArrayAdapter<String> ingameControlsEditorArrayAdapter;
     public AdapterView.OnItemClickListener ingameControlsEditorListener;
     private GameService.LocalBinder mServiceBinder;
+    private android.hardware.input.InputManager.InputDeviceListener mHidListener;
 
     private QuickSettingSideDialog mQuickSettingSideDialog;
 
@@ -125,6 +128,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        net.paraguacraft.mobile.DeviceProbe.applyToWindow(this);
 
         minecraftProfile = LauncherProfiles.getCurrentProfile();
         Tools.useANGLE = minecraftProfile.useANGLE;
@@ -228,6 +232,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             if(!latestLogFile.exists() && !latestLogFile.createNewFile())
                 throw new IOException("Failed to create a new log file");
             Logger.begin(latestLogFile.getAbsolutePath());
+            net.paraguacraft.mobile.GameLoadOverlay.attach(this);
             // FIXME: is it safe for multi thread?
             GLOBAL_CLIPBOARD = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             touchCharInput.setCharacterSender(new LwjglCharSender());
@@ -240,6 +245,12 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
                 // TODO: Remove this jank when it's not relevant anymore
                 // Shitty hack to make OSMZink smoothly transition into kopper
                 if (minecraftProfile.pojavRendererName.equals("vulkan_zink")) Tools.LOCAL_RENDERER = "opengles3_desktopgl_zink_kopper";
+            }
+            if (net.paraguacraft.mobile.DeviceTier.isWeakGpu()
+                    && Tools.LOCAL_RENDERER != null
+                    && (Tools.LOCAL_RENDERER.contains("mobileglues") || Tools.LOCAL_RENDERER.contains("zink"))) {
+                Tools.LOCAL_RENDERER = "opengles2";
+                minecraftProfile.pojavRendererName = "opengles2";
             }
 
             setTitle("Minecraft " + minecraftProfile.lastVersionId);
@@ -297,6 +308,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void loadControls() {
+        ControlScheme.applyCurrent(this);
         try {
             // Load keys
             mControlLayout.loadLayout(
@@ -315,6 +327,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         }
         mDrawerPullButton.setVisibility(mControlLayout.hasMenuButton() ? View.GONE : View.VISIBLE);
         mControlLayout.toggleControlVisible();
+        PhysicalInput.applyTouchHud(mControlLayout, mDrawerPullButton);
     }
 
     @Override
@@ -349,6 +362,11 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         if(PREF_ENABLE_GYRO) mGyroControl.enable();
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_FOCUSED, 1);
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 1);
+        if (mHidListener == null) {
+            mHidListener = PhysicalInput.watch(this, () ->
+                    runOnUiThread(() -> PhysicalInput.applyTouchHud(mControlLayout, mDrawerPullButton)));
+        }
+        PhysicalInput.applyTouchHud(mControlLayout, mDrawerPullButton);
     }
 
     @Override
@@ -360,6 +378,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         if(mQuickSettingSideDialog != null) {
             mQuickSettingSideDialog.cancel();
         }
+        PhysicalInput.unwatch(this, mHidListener);
+        mHidListener = null;
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_FOCUSED, 0);
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_HOVERED, 0);
 
@@ -473,6 +493,15 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             Tools.LOCAL_RENDERER = firstCompatibleRenderer;
             Tools.releaseRenderersCache();
         }
+        // Esto pisa también lo que el usuario haya elegido a mano: en versiones
+        // viejas Zink/LTW/MobileGlues arrancan en negro, así que es preferible
+        // ignorar la preferencia antes que dejar la instancia sin poder jugarse.
+        int requiredJavaVersion = NewJREUtil.requiredJavaMajor(version);
+        if (net.paraguacraft.mobile.DeviceTier.shouldUseGl4es(versionId, requiredJavaVersion)
+                && Tools.checkRendererCompatible(this, "opengles2")) {
+            Tools.LOCAL_RENDERER = "opengles2";
+            Log.i("runCraft", "GL4ES for " + versionId);
+        }
 
         // MCL-3732 Mitigation
         // I don't trust the bug tracker. 'server-resource-pack" was removed in 1.20.3-pre3
@@ -493,8 +522,6 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         }
         JREUtils.redirectAndPrintJRELog();
         LauncherProfiles.load();
-        int requiredJavaVersion = 8;
-        if(version.javaVersion != null) requiredJavaVersion = version.javaVersion.majorVersion;
         Tools.launchMinecraft(this, minecraftAccount, minecraftProfile, versionId, requiredJavaVersion);
         //Note that we actually stall in the above function, even if the game crashes. But let's be safe.
         Tools.runOnUiThread(()-> mServiceBinder.isActive = false);
@@ -573,6 +600,9 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
                 sendKeyPress(LwjglGlfwKeycode.GLFW_KEY_ESCAPE);
                 return true;
             }
+        }
+        if (PhysicalInput.isExternal(event.getDevice())) {
+            PhysicalInput.applyTouchHud(mControlLayout, mDrawerPullButton);
         }
         return handleEvent;
     }
@@ -707,6 +737,14 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         if(Tools.isAndroid8OrHigher() && checkCaptureDispatchConditions(ev))
             return minecraftGLView.dispatchCapturedPointerEvent(ev);
         else return super.dispatchTrackballEvent(ev);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent ev) {
+        if (PhysicalInput.isExternal(ev.getDevice())) {
+            PhysicalInput.applyTouchHud(mControlLayout, mDrawerPullButton);
+        }
+        return super.dispatchGenericMotionEvent(ev);
     }
 
     @Override

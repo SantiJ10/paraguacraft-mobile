@@ -16,6 +16,7 @@ import net.kdt.pojavlaunch.customcontrols.ControlJoystickData;
 import net.kdt.pojavlaunch.customcontrols.ControlLayout;
 import net.kdt.pojavlaunch.customcontrols.EditorExitable;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
+import net.paraguacraft.mobile.ControlScheme;
 
 import java.io.IOException;
 
@@ -68,6 +69,7 @@ public class CustomControlsActivity extends BaseActivity implements EditorExitab
 			}
 			mDrawerLayout.closeDrawers();
 		});
+		ControlScheme.apply(this, ControlScheme.current());
 		mControlLayout.setModifiable(true);
 		try {
 			mControlLayout.loadLayout(LauncherPreferences.PREF_DEFAULTCTRL_PATH);

@@ -6,9 +6,11 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -16,7 +18,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.math.MathUtils;
 import androidx.fragment.app.Fragment;
-import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import net.kdt.pojavlaunch.R;
@@ -51,6 +53,8 @@ public class SearchModFragment extends Fragment implements ModItemAdapter.Search
     private ModpackApi modpackApi;
 
     private final SearchFilters mSearchFilters;
+    private String mInstanceMc;
+    private String mInstanceLoader;
 
     public SearchModFragment(){
         super(R.layout.fragment_mod_search);
@@ -66,6 +70,14 @@ public class SearchModFragment extends Fragment implements ModItemAdapter.Search
 
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        Bundle args = getArguments();
+        if (args != null && args.getBoolean("paraguacraft_store", false)) {
+            mSearchFilters.isModpack = false;
+            mSearchFilters.projectType = args.getString("type", "mod");
+            mInstanceMc = args.getString("instance_mc");
+            mInstanceLoader = args.getString("instance_loader");
+            net.paraguacraft.mobile.StoreInstall.pendingType = mSearchFilters.projectType;
+        }
         // You can only access resources after attaching to current context
         mModItemAdapter = new ModItemAdapter(getResources(), modpackApi, this);
         ProgressKeeper.addTaskCountListener(mModItemAdapter);
@@ -80,8 +92,17 @@ public class SearchModFragment extends Fragment implements ModItemAdapter.Search
 
         mDefaultTextColor = mStatusTextView.getTextColors();
 
-        mRecyclerview.setLayoutManager(new LinearLayoutManager(getContext()));
+        int span = 2;
+        GridLayoutManager glm = new GridLayoutManager(getContext(), span);
+        glm.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override
+            public int getSpanSize(int position) {
+                return mModItemAdapter.isFooter(position) ? span : 1;
+            }
+        });
+        mRecyclerview.setLayoutManager(glm);
         mRecyclerview.setAdapter(mModItemAdapter);
+        net.paraguacraft.mobile.MouseWheel.attach(mRecyclerview);
 
         mRecyclerview.addOnScrollListener(mOverlayPositionListener);
 
@@ -99,6 +120,32 @@ public class SearchModFragment extends Fragment implements ModItemAdapter.Search
                    mRecyclerview.getPaddingBottom());
         });
         mFilterButton.setOnClickListener(v -> displayFilterDialog());
+
+        LinearLayout types = view.findViewById(R.id.search_mod_types_row);
+        if (types != null) {
+            addTypeChip(types, "Mods", "mod", false);
+            addTypeChip(types, "Resource packs", "resourcepack", false);
+            addTypeChip(types, "Shaders", "shader", false);
+            addTypeChip(types, "Datapacks", "datapack", false);
+            addTypeChip(types, "Mundos", "world", false);
+            addTypeChip(types, "Modpacks", "modpack", true);
+        }
+        TextView title = view.findViewById(R.id.search_mod_title);
+        if (title != null) title.setText(storeTitle(mSearchFilters.projectType, mSearchFilters.isModpack));
+        CheckBox instanceFilter = view.findViewById(R.id.search_mod_instance_filter);
+        if (instanceFilter != null) {
+            if (mInstanceMc != null && !mInstanceMc.isEmpty()) {
+                instanceFilter.setVisibility(View.VISIBLE);
+                String loader = mInstanceLoader != null ? " · " + mInstanceLoader : "";
+                instanceFilter.setText("Solo esta instancia (" + mInstanceMc + loader + ")");
+                instanceFilter.setOnCheckedChangeListener((b, checked) -> {
+                    applyInstanceFilter(checked);
+                    searchMods(mSearchEditText.getText() != null ? mSearchEditText.getText().toString() : "");
+                });
+            } else {
+                instanceFilter.setVisibility(View.GONE);
+            }
+        }
 
         searchMods(null);
     }
@@ -169,5 +216,47 @@ public class SearchModFragment extends Fragment implements ModItemAdapter.Search
 
 
         dialog.show();
+    }
+
+    private void addTypeChip(LinearLayout row, String label, String type, boolean modpack) {
+        Button b = new Button(requireContext());
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(12);
+        boolean active = mSearchFilters.isModpack == modpack
+                && (modpack || type.equals(mSearchFilters.projectType != null ? mSearchFilters.projectType : "mod"));
+        b.setAlpha(active ? 1f : 0.55f);
+        b.setOnClickListener(v -> {
+            mSearchFilters.isModpack = modpack;
+            mSearchFilters.projectType = modpack ? "modpack" : type;
+            net.paraguacraft.mobile.StoreInstall.pendingType = mSearchFilters.projectType;
+            TextView title = requireView().findViewById(R.id.search_mod_title);
+            if (title != null) title.setText(storeTitle(mSearchFilters.projectType, modpack));
+            applyInstanceFilter(mSearchFilters.mcVersion != null);
+            for (int i = 0; i < row.getChildCount(); i++) row.getChildAt(i).setAlpha(0.55f);
+            v.setAlpha(1f);
+            searchMods(mSearchEditText.getText() != null ? mSearchEditText.getText().toString() : "");
+        });
+        row.addView(b);
+    }
+
+    private static String storeTitle(String type, boolean modpack) {
+        if (modpack || "modpack".equals(type)) return "Buscar modpacks";
+        if ("resourcepack".equals(type)) return "Buscar paquetes de recursos";
+        if ("shader".equals(type)) return "Buscar shaders";
+        if ("datapack".equals(type)) return "Buscar datapacks";
+        if ("world".equals(type)) return "Buscar mundos";
+        return "Buscar mods";
+    }
+
+    private void applyInstanceFilter(boolean on) {
+        if (on && mInstanceMc != null && !mInstanceMc.isEmpty()) {
+            mSearchFilters.mcVersion = mInstanceMc;
+            boolean modsOnly = !mSearchFilters.isModpack && "mod".equals(mSearchFilters.projectType);
+            mSearchFilters.loader = modsOnly ? mInstanceLoader : null;
+        } else {
+            mSearchFilters.mcVersion = null;
+            mSearchFilters.loader = null;
+        }
     }
 }

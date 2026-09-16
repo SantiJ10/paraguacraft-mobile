@@ -15,7 +15,8 @@ import org.apache.commons.io.*;
 @SuppressWarnings("IOStreamConstructor")
 public class DownloadUtils {
     public static final String USER_AGENT = Tools.APP_NAME;
-    private static final int TIME_OUT = 10000;
+    private static final int CONNECT_TIME_OUT = 30000;
+    private static final int READ_TIME_OUT = 120000;
 
     public static void download(String url, OutputStream os) throws IOException {
         download(new URL(url), os);
@@ -27,8 +28,8 @@ public class DownloadUtils {
             // System.out.println("Connecting: " + url.toString());
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
             conn.setRequestProperty("User-Agent", USER_AGENT);
-            conn.setConnectTimeout(TIME_OUT);
-            conn.setReadTimeout(TIME_OUT);
+            conn.setConnectTimeout(CONNECT_TIME_OUT);
+            conn.setReadTimeout(READ_TIME_OUT);
             conn.setDoInput(true);
             conn.connect();
             if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
@@ -58,41 +59,71 @@ public class DownloadUtils {
     }
 
     public static void downloadFile(String url, File out) throws IOException {
-        FileUtils.ensureParentDirectory(out);
-        try (FileOutputStream fileOutputStream = new FileOutputStream(out)) {
-            download(url, fileOutputStream);
-        } catch (IOException e) {
-            if (out.length() < 1) { // Only delete it if file is 0 bytes cause this file might already be downloaded and something else went wrong.
-                Log.i("DownloadUtils", "Cleaning up failed download: " + out.getAbsolutePath());
-                out.delete();
-                throw e;
-            }
-        }
+        downloadToFile(url, out, null, null);
     }
 
     public static void downloadFileMonitored(String urlInput, File outputFile, @Nullable byte[] buffer,
                                              Tools.DownloaderFeedback monitor) throws IOException {
+        downloadToFile(urlInput, outputFile, buffer, monitor);
+    }
+
+    /**
+     * Download with HTTP Range resume so a dropped slow transfer does not restart from 0.
+     */
+    private static void downloadToFile(String urlInput, File outputFile, @Nullable byte[] buffer,
+                                       @Nullable Tools.DownloaderFeedback monitor) throws IOException {
         FileUtils.ensureParentDirectory(outputFile);
-
+        long existing = outputFile.exists() ? outputFile.length() : 0;
         HttpURLConnection conn = (HttpURLConnection) new URL(urlInput).openConnection();
-        conn.setConnectTimeout(TIME_OUT);
-        conn.setReadTimeout(TIME_OUT);
-        InputStream readStr = conn.getInputStream();
-        try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-            int current;
-            int overall = 0;
-            int length = conn.getContentLength();
-
-            if (buffer == null) buffer = new byte[65535];
-
-            while ((current = readStr.read(buffer)) != -1) {
-                overall += current;
-                fos.write(buffer, 0, current);
-                monitor.updateProgress(overall, length);
+        conn.setRequestProperty("User-Agent", USER_AGENT);
+        conn.setConnectTimeout(CONNECT_TIME_OUT);
+        conn.setReadTimeout(READ_TIME_OUT);
+        conn.setInstanceFollowRedirects(true);
+        if (existing > 0) {
+            conn.setRequestProperty("Range", "bytes=" + existing + "-");
+        }
+        InputStream readStr = null;
+        try {
+            conn.connect();
+            int code = conn.getResponseCode();
+            if (code == 416) {
+                if (monitor != null) {
+                    int size = (int) Math.min(existing, Integer.MAX_VALUE);
+                    monitor.updateProgress(size, size);
+                }
+                return;
+            }
+            boolean append = existing > 0 && code == HttpURLConnection.HTTP_PARTIAL;
+            if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
+                throw new IOException("Server returned HTTP " + code + ": " + conn.getResponseMessage());
+            }
+            if (!append) existing = 0;
+            int bodyLength = conn.getContentLength();
+            int total = bodyLength < 0 ? -1 : (append ? (int) Math.min(existing + bodyLength, Integer.MAX_VALUE) : bodyLength);
+            readStr = conn.getInputStream();
+            if (buffer == null) buffer = new byte[65536];
+            try (FileOutputStream fos = new FileOutputStream(outputFile, append)) {
+                int current;
+                long overall = existing;
+                while ((current = readStr.read(buffer)) != -1) {
+                    overall += current;
+                    fos.write(buffer, 0, current);
+                    if (monitor != null) {
+                        monitor.updateProgress((int) Math.min(overall, Integer.MAX_VALUE), total);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            if (outputFile.length() < 1) {
+                Log.i("DownloadUtils", "Cleaning up failed download: " + outputFile.getAbsolutePath());
+                outputFile.delete();
+            }
+            throw new IOException("Unable to download from " + urlInput, e);
+        } finally {
+            if (readStr != null) {
+                try { readStr.close(); } catch (IOException ignored) {}
             }
             conn.disconnect();
-        } catch (IOException e) {
-            throw new IOException("Unable to download from " + urlInput, e);
         }
     }
 
@@ -159,6 +190,7 @@ public class DownloadUtils {
         T result = null;
         while (attempts < 5 && !fileOkay){
             attempts++;
+            if (attempts > 1 && outputFile.exists()) outputFile.delete();
             downloadFile(downloadFunction);
             fileOkay = verifyFile(outputFile, sha1);
         }
@@ -175,6 +207,9 @@ public class DownloadUtils {
     public static long getContentLength(String url) throws IOException {
         HttpURLConnection urlConnection = (HttpURLConnection) new URL(url).openConnection();
         urlConnection.setRequestMethod("HEAD");
+        urlConnection.setRequestProperty("User-Agent", USER_AGENT);
+        urlConnection.setConnectTimeout(CONNECT_TIME_OUT);
+        urlConnection.setReadTimeout(READ_TIME_OUT);
         urlConnection.setDoInput(false);
         urlConnection.setDoOutput(false);
         urlConnection.connect();

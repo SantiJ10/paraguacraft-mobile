@@ -24,8 +24,13 @@ public class VersionSelectorDialog {
         VersionListAdapter adapter = new VersionListAdapter(versionArray, hideCustomVersions, context);
 
         expandableListView.setAdapter(adapter);
+        net.paraguacraft.mobile.MouseWheel.attach(expandableListView);
         builder.setView(expandableListView);
         AlertDialog dialog = builder.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().getDecorView().setOnGenericMotionListener((v, e) ->
+                    net.paraguacraft.mobile.MouseWheel.dispatch(expandableListView, e));
+        }
 
         expandableListView.setOnChildClickListener((parent, v1, groupPosition, childPosition, id) -> {
             String version = adapter.getChild(groupPosition, childPosition);

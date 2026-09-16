@@ -42,7 +42,9 @@ public class ZipUtils {
         int dirNameLen = dirName.length();
         while(zipEntries.hasMoreElements()) {
             ZipEntry zipEntry = zipEntries.nextElement();
-            String entryName = zipEntry.getName();
+            String entryName = zipEntry.getName().replace('\\', '/');
+            if (entryName.startsWith("/")) entryName = entryName.substring(1);
+            if (entryName.contains("__MACOSX") || entryName.endsWith(".DS_Store")) continue;
             if(!entryName.startsWith(dirName) || zipEntry.isDirectory()) continue;
             File zipDestination = new File(destination, entryName.substring(dirNameLen));
             FileUtils.ensureParentDirectory(zipDestination);

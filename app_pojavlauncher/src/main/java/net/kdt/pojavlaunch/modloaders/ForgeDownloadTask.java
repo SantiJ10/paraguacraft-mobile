@@ -46,7 +46,8 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
     private void downloadForge() {
         ProgressKeeper.submitProgress(ProgressLayout.INSTALL_MODPACK, 0, R.string.forge_dl_progress, mFullVersion);
         try {
-            File destinationFile = new File(Tools.DIR_CACHE, "forge-installer.jar");
+            File destinationFile = new File(Tools.DIR_CACHE,
+                    "forge-" + (mFullVersion != null ? mFullVersion : "installer") + "-installer.jar");
             byte[] buffer = new byte[8192];
             DownloadUtils.downloadFileMonitored(mDownloadUrl, destinationFile, buffer, this);
             mListener.onDownloadFinished(destinationFile);
@@ -75,10 +76,23 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
     public boolean findVersion() throws IOException {
         List<String> forgeVersions = ForgeUtils.downloadForgeVersions();
         if(forgeVersions == null) return false;
-        String versionStart = mGameVersion+"-"+mLoaderVersion;
-        for(String versionName : forgeVersions) {
-            if(!versionName.startsWith(versionStart)) continue;
-            mFullVersion = versionName;
+        String exactLegacy = mGameVersion + "-" + mLoaderVersion + "-" + mGameVersion;
+        String versionStart = mGameVersion + "-" + mLoaderVersion;
+        String prefixMatch = null;
+        for (String versionName : forgeVersions) {
+            if (versionName.equals(exactLegacy) || versionName.equals(versionStart)) {
+                mFullVersion = versionName;
+                mDownloadUrl = ForgeUtils.getInstallerUrl(mFullVersion);
+                return true;
+            }
+            if (prefixMatch == null && versionName.startsWith(versionStart)
+                    && (versionName.length() == versionStart.length()
+                    || versionName.charAt(versionStart.length()) == '-')) {
+                prefixMatch = versionName;
+            }
+        }
+        if (prefixMatch != null) {
+            mFullVersion = prefixMatch;
             mDownloadUrl = ForgeUtils.getInstallerUrl(mFullVersion);
             return true;
         }

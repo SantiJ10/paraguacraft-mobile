@@ -58,12 +58,29 @@ public class CurseforgeApi implements ModpackApi{
 
         HashMap<String, Object> params = new HashMap<>();
         params.put("gameId", CURSEFORGE_MINECRAFT_GAME_ID);
-        params.put("classId", searchFilters.isModpack ? CURSEFORGE_MODPACK_CLASS_ID : CURSEFORGE_MOD_CLASS_ID);
+        if (searchFilters.isModpack) {
+            params.put("classId", CURSEFORGE_MODPACK_CLASS_ID);
+        } else if ("resourcepack".equals(searchFilters.projectType)) {
+            params.put("classId", 12);
+        } else if ("shader".equals(searchFilters.projectType)) {
+            params.put("classId", 6552);
+        } else if ("datapack".equals(searchFilters.projectType)) {
+            params.put("classId", 6945);
+        } else if ("world".equals(searchFilters.projectType)) {
+            params.put("classId", 17);
+        } else {
+            params.put("classId", CURSEFORGE_MOD_CLASS_ID);
+        }
         params.put("searchFilter", searchFilters.name);
         params.put("sortField", CURSEFORGE_SORT_RELEVANCY);
         params.put("sortOrder", "desc");
         if(searchFilters.mcVersion != null && !searchFilters.mcVersion.isEmpty())
             params.put("gameVersion", searchFilters.mcVersion);
+        String type = searchFilters.projectType != null ? searchFilters.projectType : "mod";
+        if (!searchFilters.isModpack && "mod".equals(type) && searchFilters.loader != null) {
+            if ("forge".equals(searchFilters.loader)) params.put("modLoaderType", 1);
+            else if ("fabric".equals(searchFilters.loader)) params.put("modLoaderType", 4);
+        }
         if(previousPageResult != null)
             params.put("index", curseforgeSearchResult.previousOffset);
 
@@ -82,12 +99,20 @@ public class CurseforgeApi implements ModpackApi{
                 Log.i("CurseforgeApi", "Skipping modpack "+dataElement.get("name").getAsString() + " because curseforge sucks");
                 continue;
             }
+            String logoUrl = "";
+            try {
+                JsonObject logo = dataElement.getAsJsonObject("logo");
+                if (logo != null && logo.has("thumbnailUrl") && !logo.get("thumbnailUrl").isJsonNull()) {
+                    logoUrl = logo.get("thumbnailUrl").getAsString();
+                }
+            } catch (Exception ignored) {}
             ModItem modItem = new ModItem(Constants.SOURCE_CURSEFORGE,
                     searchFilters.isModpack,
                     dataElement.get("id").getAsString(),
                     dataElement.get("name").getAsString(),
-                    dataElement.get("summary").getAsString(),
-                    dataElement.getAsJsonObject("logo").get("thumbnailUrl").getAsString());
+                    dataElement.has("summary") && !dataElement.get("summary").isJsonNull()
+                            ? dataElement.get("summary").getAsString() : "",
+                    logoUrl);
             modItemList.add(modItem);
         }
         if(curseforgeSearchResult == null) curseforgeSearchResult = new CurseforgeSearchResult();
@@ -120,7 +145,15 @@ public class CurseforgeApi implements ModpackApi{
             versionNames[i] = modDetail.get("displayName").getAsString();
             versionIds[i] = modDetail.get("id").getAsString();
             JsonElement downloadUrl = modDetail.get("downloadUrl");
-            versionUrls[i] = downloadUrl.getAsString();
+            if (downloadUrl == null || downloadUrl.isJsonNull() || downloadUrl.getAsString().trim().isEmpty()) {
+                try {
+                    versionUrls[i] = getDownloadUrl(Long.parseLong(item.id), Long.parseLong(versionIds[i]));
+                } catch (Exception e) {
+                    versionUrls[i] = null;
+                }
+            } else {
+                versionUrls[i] = downloadUrl.getAsString();
+            }
 
             JsonArray gameVersions = modDetail.getAsJsonArray("gameVersions");
             try {
@@ -192,7 +225,8 @@ public class CurseforgeApi implements ModpackApi{
 
         for(int i = 0; i < data.size(); i++) {
             JsonObject fileInfo = data.get(i).getAsJsonObject();
-            if(fileInfo.get("isServerPack").getAsBoolean()) continue;
+            JsonElement serverPack = fileInfo.get("isServerPack");
+            if (serverPack != null && !serverPack.isJsonNull() && serverPack.getAsBoolean()) continue;
             objectList.add(fileInfo);
         }
         if(data.size() < CURSEFORGE_PAGINATION_SIZE) {

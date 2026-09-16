@@ -362,6 +362,12 @@ public class JREUtils {
         purgeArg(userArgs, "-XX:+UseTransparentHugePages");
         purgeArg(userArgs, "-XX:+UseLargePagesInMetaspace");
         purgeArg(userArgs, "-XX:+UseLargePages");
+        // Flags pensadas para PCs de escritorio que en un celular solo hacen daño:
+        // precomprometer el heap acerca al low-memory killer y ZGC tiene un piso de
+        // memoria muy por encima de lo que se le asigna al juego acá.
+        purgeArg(userArgs, "-XX:+AlwaysPreTouch");
+        purgeArg(userArgs, "-XX:+UseZGC");
+        purgeArg(userArgs, "-XX:+ZGenerational");
         purgeArg(userArgs, "-Dorg.lwjgl.opengl.libname");
         // Don't let the user specify a custom Freetype library (as the user is unlikely to specify a version compiled for Android)
         purgeArg(userArgs, "-Dorg.lwjgl.freetype.libname");
@@ -369,8 +375,14 @@ public class JREUtils {
         purgeArg(userArgs, "-XX:ActiveProcessorCount");
 
         //Add automatically generated args
-        userArgs.add("-Xms" + LauncherPreferences.PREF_RAM_ALLOCATION + "M");
-        userArgs.add("-Xmx" + LauncherPreferences.PREF_RAM_ALLOCATION + "M");
+        // Android mata procesos por memoria residente, asi que arrancar con
+        // Xms = Xmx comprometia el heap entero de entrada y en celulares de 3-4 GB
+        // el low-memory killer cerraba el juego. Se arranca por la mitad y la JVM
+        // crece solo si hace falta.
+        int xmxMb = LauncherPreferences.PREF_RAM_ALLOCATION;
+        int xmsMb = Math.max(256, Math.min(xmxMb, xmxMb / 2));
+        userArgs.add("-Xms" + xmsMb + "M");
+        userArgs.add("-Xmx" + xmxMb + "M");
         if(LOCAL_RENDERER != null) userArgs.add("-Dorg.lwjgl.opengl.libname=" + graphicsLib);
 
         // Force LWJGL to use the Freetype library intended for it, instead of using the one

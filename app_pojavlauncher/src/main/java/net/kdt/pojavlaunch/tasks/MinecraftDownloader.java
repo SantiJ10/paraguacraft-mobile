@@ -77,16 +77,16 @@ public class MinecraftDownloader {
         if(activity != null){
             isLocalProfile = Tools.isLocalProfile(activity);
             isOnline = Tools.isOnline(activity);
-            Tools.switchDemo(Tools.isDemoProfile(activity));
+            Tools.switchDemo(false);
 
         } else {
             isLocalProfile = true;
-            Tools.switchDemo(true);
+            Tools.switchDemo(false);
         }
 
         sExecutorService.execute(() -> {
             try {
-                if(isLocalProfile || !isOnline) {
+                if(!isOnline) {
                     String versionMessage = realVersion; // Use provided version unless we find its a modded instance
 
                     // See if provided version is a modded version and if that version depends on another jar, check for presence of both jar's .json.
@@ -99,14 +99,19 @@ public class MinecraftDownloader {
                         File vanillaJsonFile = new File(Tools.DIR_HOME_VERSION + "/" + providedJson.inheritsFrom + "/" + providedJson.inheritsFrom + ".json");
                         versionMessage = providedJson.inheritsFrom != null ? providedJson.inheritsFrom : versionMessage;
 
+                        File vanillaJar = providedJson.inheritsFrom != null
+                                ? new File(Tools.DIR_HOME_VERSION + "/" + providedJson.inheritsFrom + "/" + providedJson.inheritsFrom + ".jar")
+                                : new File(Tools.DIR_HOME_VERSION + "/" + realVersion + "/" + realVersion + ".jar");
+
                         // Ensure they're both not some 0 byte corrupted json
-                        if (providedJsonFile.length() == 0 || vanillaJsonFile.exists() && vanillaJsonFile.length() == 0){
+                        if (providedJsonFile.length() == 0 || vanillaJsonFile.exists() && vanillaJsonFile.length() == 0
+                                || !vanillaJar.exists() || vanillaJar.length() == 0){
                             throw new RuntimeException("Minecraft "+versionMessage+ " is needed by " +realVersion); }
 
                         listener.onDownloadDone();
                     } catch (Exception e) {
-                        String tryagain = !isOnline ? "Please ensure you have an internet connection" : "Please try again on your Microsoft Account";
-                        Tools.showErrorRemote(versionMessage + " is not currently installed. "+ tryagain, e);
+                        String tryagain = "Conectate a internet para bajar Minecraft " + versionMessage;
+                        Tools.showErrorRemote(versionMessage + " no está instalado. "+ tryagain, e);
                     }
                 }else {
                 downloadGame(activity, version, realVersion);
@@ -569,13 +574,11 @@ public class MinecraftDownloader {
         }
         
         private void verifyFileSha1() throws Exception {
-            if(mTargetPath.isFile() && mTargetPath.canRead() && Tools.compareSHA1(mTargetPath, mTargetSha1)) {
+            if (mTargetPath.isFile() && mTargetPath.length() > 0) {
                 finishWithoutDownloading();
-            } else {
-                // Rely on the download function to throw an IOE in case if the file is not
-                // writable/not a file/etc...
-                downloadFile();
+                return;
             }
+            downloadFile();
         }
         
         private void downloadFile() throws Exception {

@@ -73,7 +73,10 @@ public abstract class FabriclikeInstallFragment extends Fragment implements Modl
         mProgressBar = view.findViewById(R.id.fabric_installer_progress_bar);
         mRetryView = view.findViewById(R.id.fabric_installer_retry_layout);
         mOnlyStableCheckbox = view.findViewById(R.id.fabric_installer_only_stable_checkbox);
-        mOnlyStableCheckbox.setOnCheckedChangeListener(this);
+        mOnlyStableCheckbox.setChecked(true);
+        mOnlyStableCheckbox.setVisibility(View.GONE);
+        View optionsLabel = view.findViewById(R.id.fabric_installer_label_options);
+        if (optionsLabel != null) optionsLabel.setVisibility(View.GONE);
         view.findViewById(R.id.fabric_installer_retry_button).setOnClickListener(this::onClickRetry);
         ((TextView)view.findViewById(R.id.fabric_installer_label_loader_ver)).setText(getString(R.string.fabric_dl_loader_version, mFabriclikeUtils.getName()));
         ModloaderListenerProxy proxy = getListenerProxy();
@@ -176,10 +179,12 @@ public abstract class FabriclikeInstallFragment extends Fragment implements Modl
         // The "visibility on" is managed by the spinners
     }
 
-    private ArrayAdapter<FabricVersion> createAdapter(FabricVersion[] fabricVersions, boolean onlyStable) {
+    private ArrayAdapter<FabricVersion> createAdapter(FabricVersion[] fabricVersions, boolean gameVersions) {
         ArrayList<FabricVersion> filteredVersions = new ArrayList<>(fabricVersions.length);
         for(FabricVersion fabricVersion : fabricVersions) {
-            if(!onlyStable || fabricVersion.stable) filteredVersions.add(fabricVersion);
+            if(!fabricVersion.stable) continue;
+            if(gameVersions && !net.paraguacraft.mobile.PgVersions.isReleaseId(fabricVersion.version)) continue;
+            filteredVersions.add(fabricVersion);
         }
         filteredVersions.trimToSize();
         return new ArrayAdapter<>(requireContext(), android.R.layout.simple_spinner_dropdown_item, filteredVersions);
@@ -243,7 +248,7 @@ public abstract class FabriclikeInstallFragment extends Fragment implements Modl
 
     private void updateLoaderSpinner() {
         if(mLoaderVersionArray == null) return;
-        mLoaderVersionSpinner.setAdapter(createAdapter(mLoaderVersionArray, mOnlyStableCheckbox.isChecked()));
+        mLoaderVersionSpinner.setAdapter(createAdapter(mLoaderVersionArray, false));
     }
 
     class GameVersionSelectedListener implements AdapterView.OnItemSelectedListener {
@@ -290,7 +295,7 @@ public abstract class FabriclikeInstallFragment extends Fragment implements Modl
 
     private void updateGameSpinner() {
         if(mGameVersionArray == null) return;
-        mGameVersionSpinner.setAdapter(createAdapter(mGameVersionArray, mOnlyStableCheckbox.isChecked()));
+        mGameVersionSpinner.setAdapter(createAdapter(mGameVersionArray, true));
     }
 
     private ModloaderListenerProxy getListenerProxy() {

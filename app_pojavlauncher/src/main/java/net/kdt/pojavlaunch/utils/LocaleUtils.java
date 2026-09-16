@@ -28,23 +28,31 @@ public class LocaleUtils extends ContextWrapper {
         }
 
         if(PREF_FORCE_ENGLISH){
+            context = applyLocale(context, Locale.ENGLISH);
+        } else {
+            // Paraguacraft: español por defecto (el usuario puede forzar inglés).
+            context = applyLocale(context, new Locale("es"));
+        }
+
+        return new LocaleUtils(context);
+    }
+
+    private static Context applyLocale(Context context, Locale locale) {
             Resources resources = context.getResources();
             Configuration configuration = resources.getConfiguration();
 
-            configuration.setLocale(Locale.ENGLISH);
-            Locale.setDefault(Locale.ENGLISH);
+            configuration.setLocale(locale);
+            Locale.setDefault(locale);
             if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N){
-                LocaleList localeList = new LocaleList(Locale.ENGLISH);
+                LocaleList localeList = new LocaleList(locale);
                 LocaleList.setDefault(localeList);
                 configuration.setLocales(localeList);
             }
 
             resources.updateConfiguration(configuration, resources.getDisplayMetrics());
             if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1){
-                context = context.createConfigurationContext(configuration);
+                return context.createConfigurationContext(configuration);
             }
-        }
-
-        return new LocaleUtils(context);
+            return context;
     }
 }

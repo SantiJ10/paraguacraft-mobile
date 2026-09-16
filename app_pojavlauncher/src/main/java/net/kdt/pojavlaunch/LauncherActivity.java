@@ -3,13 +3,14 @@ package net.kdt.pojavlaunch;
 import static android.content.res.Configuration.ORIENTATION_PORTRAIT;
 import static net.kdt.pojavlaunch.Tools.getMods;
 import static net.kdt.pojavlaunch.Tools.hasMods;
-import static net.kdt.pojavlaunch.Tools.hasNoOnlineProfileDialog;
 import static net.kdt.pojavlaunch.Tools.isOnline;
 
 import android.Manifest;
 import android.app.NotificationManager;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.database.Cursor;
 import android.os.Build;
 import android.os.Bundle;
@@ -56,10 +57,19 @@ import net.kdt.pojavlaunch.services.ProgressServiceKeeper;
 import net.kdt.pojavlaunch.tasks.AsyncMinecraftDownloader;
 import net.kdt.pojavlaunch.tasks.AsyncVersionList;
 import net.kdt.pojavlaunch.tasks.MinecraftDownloader;
-import net.kdt.pojavlaunch.utils.DateUtils;
 import net.kdt.pojavlaunch.utils.NotificationUtils;
 import net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles;
 import net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile;
+import net.paraguacraft.mobile.BrandPack;
+import net.paraguacraft.mobile.ControlScheme;
+import net.paraguacraft.mobile.DeviceProbe;
+import net.paraguacraft.mobile.DeviceTier;
+import net.paraguacraft.mobile.MobileCompat;
+import net.paraguacraft.mobile.OptimizedInstaller;
+import net.paraguacraft.mobile.SkinHelper;
+import net.paraguacraft.mobile.StoreInstall;
+import net.paraguacraft.mobile.UpdateCheck;
+import net.paraguacraft.mobile.Wallpaper;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -67,12 +77,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
 import java.security.NoSuchAlgorithmException;
-import java.text.ParseException;
 import java.util.List;
 import java.util.Locale;
 
 public class LauncherActivity extends BaseActivity {
     public static final String SETTING_FRAGMENT_TAG = "SETTINGS_FRAGMENT";
+    private boolean mIrisAttempted;
 
     public final ActivityResultLauncher<Object> modInstallerLauncher =
             registerForActivityResult(new OpenDocumentWithExtension("jar"), (data)->{
@@ -187,6 +197,43 @@ public class LauncherActivity extends BaseActivity {
             return false;
         }
 
+        DeviceTier.reconcile(this);
+        DeviceProbe.applyToWindow(this);
+        BrandPack.inject(this, prof);
+        SkinHelper.ensureForLaunch(this, Tools.getGameDirPath(prof));
+        File gameDir = Tools.getGameDirPath(prof);
+        try {
+            MobileCompat.sanitizeGameDir(gameDir);
+            StoreInstall.repairSaves(gameDir);
+            String mc = mcVersionOf(prof);
+            if (prof.name != null && prof.name.startsWith("Optimized ")) {
+                mc = prof.name.substring("Optimized ".length()).trim();
+            }
+            OptimizedInstaller.applyFpsOnly(this, gameDir, mc, DeviceTier.current(this));
+            if (!mIrisAttempted && OptimizedInstaller.needsIris(gameDir)) {
+                mIrisAttempted = true;
+                final String irisMc = mc;
+                Toast.makeText(this, "Instalando Iris…", Toast.LENGTH_SHORT).show();
+                ProgressLayout.setProgress(ProgressLayout.INSTALL_MODPACK, 0, R.string.global_waiting);
+                PojavApplication.sExecutorService.execute(() -> {
+                    try {
+                        OptimizedInstaller.ensureFabricIris(this, gameDir, irisMc, msg -> {});
+                    } catch (Exception e) {
+                        Log.w("PgLaunch", "Iris", e);
+                    }
+                    ProgressLayout.clearProgress(ProgressLayout.INSTALL_MODPACK);
+                    Tools.runOnUiThread(() -> ExtraCore.setValue(ExtraConstants.LAUNCH_GAME, true));
+                });
+                return false;
+            }
+        } catch (Exception ignored) {}
+        if (prof.name != null && prof.name.startsWith("Optimized ")) {
+            try {
+                String mc = prof.name.substring("Optimized ".length()).trim();
+                OptimizedInstaller.applyOptionsIfNeeded(this, gameDir, mc, DeviceTier.current(this));
+            } catch (Exception ignored) {}
+        }
+
         if(mAccountSpinner.getSelectedAccount() == null){
             Toast.makeText(this, R.string.no_saved_accounts, Toast.LENGTH_LONG).show();
             ExtraCore.setValue(ExtraConstants.SELECT_AUTH_METHOD, true);
@@ -235,22 +282,6 @@ public class LauncherActivity extends BaseActivity {
 
         String normalizedVersionId = AsyncMinecraftDownloader.normalizeVersionId(prof.lastVersionId);
         JMinecraftVersionList.Version mcVersion = AsyncMinecraftDownloader.getListedVersion(normalizedVersionId);
-
-        // Do not load when is a modded version or older than minecraft 1.3 on demo account
-        if (mAccountSpinner.getSelectedAccount().isDemo()) {
-            boolean isOlderThan13 = true;
-
-            if (mcVersion != null) {
-                try {
-                    isOlderThan13 = DateUtils.dateBefore(DateUtils.parseReleaseDate(mcVersion.releaseTime), 2012, 6, 22);
-                } catch (ParseException ignored) {}
-            }
-
-            if (isOlderThan13) {
-                hasNoOnlineProfileDialog(this, getString(R.string.global_error), getString(R.string.demo_versions_supported));
-                return false;
-            }
-        }
 
         new MinecraftDownloader().start(
                 this,
@@ -326,12 +357,24 @@ public class LauncherActivity extends BaseActivity {
         );
         getWindow().setBackgroundDrawable(null);
         bindViews();
+        Wallpaper.apply(this);
+        ControlScheme.applyCurrent(this);
         checkNotificationPermission();
         mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         ProgressKeeper.addTaskCountListener(mDoubleLaunchPreventionListener);
         ProgressKeeper.addTaskCountListener((mProgressServiceKeeper = new ProgressServiceKeeper(this)));
 
         mSettingsButton.setOnClickListener(mSettingButtonListener);
+        View cafecito = findViewById(R.id.pg_cafecito);
+        if (cafecito != null) {
+            cafecito.setOnClickListener(v -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://cafecito.app/amin1001")));
+                } catch (Exception e) {
+                    Toast.makeText(this, "https://cafecito.app/amin1001", Toast.LENGTH_LONG).show();
+                }
+            });
+        }
         ProgressKeeper.addTaskCountListener(mProgressLayout);
         ExtraCore.addExtraListener(ExtraConstants.BACK_PREFERENCE, mBackPreferenceListener);
         ExtraCore.addExtraListener(ExtraConstants.SELECT_AUTH_METHOD, mSelectAuthMethod);
@@ -343,6 +386,7 @@ public class LauncherActivity extends BaseActivity {
         mInstallTracker = new ModloaderInstallTracker(this);
 
         mProgressLayout.observe(ProgressLayout.DOWNLOAD_MINECRAFT);
+        UpdateCheck.maybePrompt(this);
         mProgressLayout.observe(ProgressLayout.UNPACK_RUNTIME);
         mProgressLayout.observe(ProgressLayout.INSTALL_MODPACK);
         mProgressLayout.observe(ProgressLayout.AUTHENTICATE_MICROSOFT);
@@ -354,6 +398,7 @@ public class LauncherActivity extends BaseActivity {
         super.onResume();
         ContextExecutor.setActivity(this);
         mInstallTracker.attach();
+        UpdateCheck.retryPending(this);
     }
 
     @Override
@@ -488,5 +533,15 @@ public class LauncherActivity extends BaseActivity {
         mSettingsButton = findViewById(R.id.setting_button);
         mAccountSpinner = findViewById(R.id.account_spinner);
         mProgressLayout = findViewById(R.id.progress_layout);
+    }
+
+    public static String mcVersionOf(MinecraftProfile p) {
+        if (p == null) return "";
+        if (p.name != null && p.name.startsWith("Optimized ")) {
+            return p.name.substring("Optimized ".length()).trim();
+        }
+        String id = p.lastVersionId != null ? p.lastVersionId : "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(1\\.\\d+(?:\\.\\d+)?|26\\.\\d+)").matcher(id);
+        return m.find() ? m.group(1) : id;
     }
 }

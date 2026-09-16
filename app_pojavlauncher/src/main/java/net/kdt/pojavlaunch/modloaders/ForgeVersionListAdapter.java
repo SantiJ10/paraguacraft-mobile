@@ -21,7 +21,9 @@ public class ForgeVersionListAdapter extends BaseExpandableListAdapter implement
         mForgeVersions = new ArrayList<>();
         for(String version : forgeVersions) {
             int dashIndex = version.indexOf("-");
+            if (dashIndex <= 0) continue;
             String gameVersion = version.substring(0, dashIndex);
+            if (!net.paraguacraft.mobile.PgVersions.isReleaseId(gameVersion)) continue;
             List<String> versionList;
             int gameVersionIndex = mGameVersions.indexOf(gameVersion);
             if(gameVersionIndex != -1) versionList = mForgeVersions.get(gameVersionIndex);
