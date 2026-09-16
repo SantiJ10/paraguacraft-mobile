@@ -104,11 +104,14 @@ public class OptimizedFragment extends Fragment {
         DeviceProbe p = DeviceTier.probe(requireContext());
         String tier = DeviceTier.current(requireContext());
         String renderer = DeviceTier.renderer(requireContext(), tier);
+        boolean uncap = DeviceTier.uncapFps(requireContext());
         mHeader.setText("Paraguacraft Optimized · gama " + tier
                 + " · res " + DeviceTier.resolutionPercent(requireContext(), tier) + "%"
                 + " · Xmx " + DeviceTier.xmxMb(requireContext(), tier) + "M\n"
                 + p.summary()
                 + "\nRenderer: " + (renderer.contains("gl4es") || renderer.equals("opengles2") ? "GL4ES" : "MobileGlues")
+                + "\nFPS: " + (uncap ? "ilimitado (maxFps 260, Sodium Extra 0)" : DeviceTier.fpsCap(requireContext()) + " Hz de la pantalla")
+                + "\nEn un panel 60 Hz el overlay puede seguir mostrando ~60 aunque el limitador esté off."
                 + "\n1.8.9 instala Forge solo. 1.12.2 abre una ventana Java; cuando cierre, volvé acá.");
     }
 

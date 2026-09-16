@@ -219,7 +219,7 @@ public final class OptimizedInstaller {
     }
 
     public static final String TUNED_MARKER = ".paraguacraft_optimized_tuned";
-    public static final String TUNED_VERSION = "v11";
+    public static final String TUNED_VERSION = "v12";
 
     public static void applyOptionsIfNeeded(Context ctx, File gameDir, String mc, String tier) {
         File marker = new File(gameDir, TUNED_MARKER);
@@ -242,19 +242,13 @@ public final class OptimizedInstaller {
         if (ctx == null) return;
         MCOptionUtils.load(gameDir.getAbsolutePath());
 
-        // Esto corre antes de cada arranque. Antes pisaba maxFps siempre, así que
-        // poner "ilimitado" en las opciones de video del juego no sobrevivía al
-        // siguiente launch y el juego volvía a quedar clavado en los Hz de la
-        // pantalla. Ahora solo lo reescribimos si el valor sigue siendo el que
-        // dejamos nosotros; si el jugador lo tocó a mano, manda su elección.
+        // El botón "FPS ilimitado" del launcher manda. Antes, si options.txt
+        // ya tenía 60 (el valor que escribimos al instalar) y pg_last_written_fps
+        // no existía, se interpretaba como elección del jugador y el toggle no
+        // hacía nada: Optimized 1.21.11 quedaba clavado a 60.
         int fps = DeviceTier.fpsCap(ctx);
-        int chosen = parseFps(MCOptionUtils.get("maxFps"));
-        if (chosen > 0 && chosen != lastWrittenFps()) {
-            fps = chosen;
-        } else {
-            rememberWrittenFps(fps);
-            MCOptionUtils.set("maxFps", String.valueOf(fps));
-        }
+        rememberWrittenFps(fps);
+        MCOptionUtils.set("maxFps", String.valueOf(fps));
         MCOptionUtils.set("enableVsync", "false");
         MCOptionUtils.save();
 
@@ -269,19 +263,6 @@ public final class OptimizedInstaller {
         writeTunedMarker(ctx, gameDir, mc, tier);
     }
 
-    private static int parseFps(String raw) {
-        if (raw == null) return -1;
-        try {
-            return Integer.parseInt(raw.trim());
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
-
-    private static int lastWrittenFps() {
-        return LauncherPreferences.DEFAULT_PREF.getInt(PREF_LAST_FPS, -1);
-    }
-
     private static void rememberWrittenFps(int fps) {
         LauncherPreferences.DEFAULT_PREF.edit().putInt(PREF_LAST_FPS, fps).apply();
     }
@@ -291,12 +272,28 @@ public final class OptimizedInstaller {
      * así que su tope viejo seguía vivo aunque maxFps quedara en ilimitado.
      */
     private static void syncSodiumFpsLimit(File gameDir, int limit) {
-        File file = new File(gameDir, "config/sodium-extra-options.json");
-        if (!file.isFile()) return;
+        File cfg = new File(gameDir, "config");
+        File file = new File(cfg, "sodium-extra-options.json");
         try {
+            //noinspection ResultOfMethodCallIgnored
+            cfg.mkdirs();
+            if (!file.isFile()) {
+                Tools.write(file.getAbsolutePath(),
+                        "{\"overlay\":{\"show_fps\":true},\"extra\":{\"steady_debug_fps\":false},\"performance\":{\"fps_limit\":"
+                                + limit + "}}");
+                return;
+            }
             String json = Tools.read(file);
-            if (json == null || !json.contains("\"fps_limit\"")) return;
-            String patched = json.replaceAll("\"fps_limit\"\\s*:\\s*\\d+", "\"fps_limit\":" + limit);
+            if (json == null || json.isEmpty()) return;
+            String patched;
+            if (json.contains("\"fps_limit\"")) {
+                patched = json.replaceAll("\"fps_limit\"\\s*:\\s*\\d+", "\"fps_limit\":" + limit);
+            } else if (json.contains("\"performance\"")) {
+                patched = json.replaceFirst("\"performance\"\\s*:\\s*\\{",
+                        "\"performance\":{\"fps_limit\":" + limit + ",");
+            } else {
+                patched = json.replaceFirst("\\{", "{\"performance\":{\"fps_limit\":" + limit + "},");
+            }
             if (!patched.equals(json)) {
                 Tools.write(file.getAbsolutePath(), patched);
             }
