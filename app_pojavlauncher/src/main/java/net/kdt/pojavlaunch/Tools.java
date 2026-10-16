@@ -454,6 +454,7 @@ public final class Tools {
 
         // Pre-process specific files
         disableSplash(gamedir);
+        net.paraguacraft.mobile.MobileCompat.sanitizeGameDir(gamedir);
         String[] launchArgs = getMinecraftClientArgs(minecraftAccount, versionInfo, gamedir);
 
         // Select the appropriate openGL version
@@ -507,16 +508,12 @@ public final class Tools {
         javaArgList.add("-Dimgui.library.name=imgui-java");
         // We use an abomination to support all DH versions with a single library.
         javaArgList.add("-DZstdNativePath="+Tools.NATIVE_LIB_DIR+"/libzstd-jni-1.5.7-6-dhcompat.so");
-        // We only ever reach this point when user has already used the force run switch
-        boolean hasSodiumMod = false;
-        for (String modName : sodiumMods) {
-            if (hasMods(sodiumMods)) {
-                hasSodiumMod = true;
-                File mixinPropertiesConfigFile = new File(getGameDir(), "config/" + modName + "-mixins.properties");
-                // Write mixin configs to somewhat help stability. We don't want more people complaining.
+        boolean hasSodiumMod = hasMods(sodiumMods);
+        if (hasSodiumMod) {
+            for (String modName : sodiumMods) {
+                File mixinPropertiesConfigFile = new File(gamedir, "config/" + modName + "-mixins.properties");
                 String[] propertiesToAdd = {
-                        "mixin.features.buffer_builder.intrinsics=false",
-                        "mixin.features.chunk_rendering=false"
+                        "mixin.features.buffer_builder.intrinsics=false"
                 };
                 List<String> mixinPropertiesConfigStrings = null;
                 try {
@@ -525,6 +522,7 @@ public final class Tools {
                 if (mixinPropertiesConfigStrings == null) {
                     mixinPropertiesConfigStrings = new ArrayList<>();
                 }
+                mixinPropertiesConfigStrings.remove("mixin.features.chunk_rendering=false");
                 for (String newLine : propertiesToAdd) {
                     if (!mixinPropertiesConfigStrings.contains(newLine)) {
                         mixinPropertiesConfigStrings.add(newLine);
@@ -532,12 +530,10 @@ public final class Tools {
                 }
                 try {
                     org.apache.commons.io.FileUtils.writeLines(mixinPropertiesConfigFile, mixinPropertiesConfigStrings);
-                } catch (IOException ignored) {} // If we can't write it, we tried our best.
-
+                } catch (IOException ignored) {}
             }
+            javaArgList.add("-Dsodium.checks.issue2561=false");
         }
-        // We use a janky lwjgl setup. We don't want more people complaining it crashes.
-        if (hasSodiumMod) javaArgList.add("-Dsodium.checks.issue2561=false");
         javaArgList.add(versionInfo.mainClass);
         javaArgList.addAll(Arrays.asList(launchArgs));
         // ctx.appendlnToLog("full args: "+javaArgList.toString());

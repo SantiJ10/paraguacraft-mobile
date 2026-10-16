@@ -476,7 +476,8 @@ public class JREUtils {
         }
         List<String> additionalArguments = new ArrayList<>();
         for(String arg : overridableArguments) {
-            String strippedArg = arg.substring(0,arg.indexOf('='));
+            int eqIdx = arg.indexOf('=');
+            String strippedArg = eqIdx != -1 ? arg.substring(0, eqIdx) : arg;
             boolean add = true;
             for(String uarg : userArguments) {
                 if(uarg.startsWith(strippedArg)) {
@@ -488,6 +489,37 @@ public class JREUtils {
                 additionalArguments.add(arg);
             else
                 Log.i("ArgProcessor","Arg skipped: "+arg);
+        }
+
+        boolean hasCustomGc = false;
+        for (String uarg : userArguments) {
+            if (uarg.startsWith("-XX:+Use") && uarg.endsWith("GC")) {
+                hasCustomGc = true;
+                break;
+            }
+        }
+        if (!hasCustomGc) {
+            String[] g1Flags = new String[]{
+                    "-XX:+UnlockExperimentalVMOptions",
+                    "-XX:+UseG1GC",
+                    "-XX:+ParallelRefProcEnabled",
+                    "-XX:MaxGCPauseMillis=50",
+                    "-XX:G1NewSizePercent=20",
+                    "-XX:G1ReservePercent=20",
+                    "-XX:G1HeapRegionSize=16M"
+            };
+            for (String flag : g1Flags) {
+                int eq = flag.indexOf('=');
+                String prefix = eq != -1 ? flag.substring(0, eq) : flag;
+                boolean present = false;
+                for (String uarg : userArguments) {
+                    if (uarg.startsWith(prefix)) {
+                        present = true;
+                        break;
+                    }
+                }
+                if (!present) additionalArguments.add(flag);
+            }
         }
 
         //Add all the arguments

@@ -85,12 +85,12 @@ public class OptimizedFragment extends Fragment {
         if (pending == null || pending.isEmpty()) return;
         try {
             for (OptimizedManifest.Pack pack : OptimizedManifest.load(requireContext()).packs()) {
-                if (!pending.equals(pack.mc)) continue;
+                if (!pending.equals(pack.key()) && !pending.equals(pack.mc)) continue;
                 if (OptimizedInstaller.findForgeVersionId(pack) == null) {
-                    if (mStatus != null) mStatus.setText("Forge " + pack.mc + ": terminá el instalador y volvé.");
+                    if (mStatus != null) mStatus.setText("Forge " + pack.displayName() + ": terminá el instalador y volvé.");
                     return;
                 }
-                if (mStatus != null) mStatus.setText("Forge listo, bajando OptiFine y mods…");
+                if (mStatus != null) mStatus.setText("Forge listo, bajando mods…");
                 startInstall(pack, null, false);
                 return;
             }
@@ -113,7 +113,7 @@ public class OptimizedFragment extends Fragment {
                 + "\nFPS: " + (uncap
                 ? "ilimitado (como PC). Si querés tope, usá este botón o el slider del juego."
                 : DeviceTier.fpsCap(requireContext()) + " Hz — tocá el botón para ilimitado")
-                + "\n1.8.9 instala Forge solo. 1.12.2 abre una ventana Java; cuando cierre, volvé acá.");
+                + "\n1.8.9 instala Forge solo. 1.12.2 / 1.20.1 Forge abren una ventana Java; cuando cierre, volvé acá.");
     }
 
     private void refreshFpsButton() {
@@ -133,7 +133,7 @@ public class OptimizedFragment extends Fragment {
             net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile p =
                     net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.mainProfileJson.profiles.get(id);
             if (p == null || p.name == null || !p.name.startsWith("Optimized ")) return;
-            String mc = p.name.substring("Optimized ".length()).trim();
+            String mc = p.name.substring("Optimized ".length()).replace("Forge", "").trim();
             OptimizedInstaller.applyFpsOnly(requireContext(), Tools.getGameDirPath(p), mc, DeviceTier.current(requireContext()));
         } catch (Exception ignored) {}
     }
@@ -145,19 +145,19 @@ public class OptimizedFragment extends Fragment {
     private static void refreshPackButton(Button b, OptimizedManifest.Pack pack) {
         boolean installed = OptimizedInstaller.isInstalled(pack);
         if (installed) {
-            b.setText("Optimized " + pack.mc + "  ·  Ya instalado");
+            b.setText("Optimized " + pack.displayName() + "  ·  Ya instalado");
         } else {
-            b.setText("Instalar Optimized " + pack.mc + "  ·  " + loaderHint(pack));
+            b.setText("Instalar Optimized " + pack.displayName() + "  ·  " + loaderHint(pack));
         }
     }
 
     private void onPackClicked(OptimizedManifest.Pack pack, Button b) {
         if (OptimizedInstaller.isInstalled(pack)) {
             new AlertDialog.Builder(requireContext())
-                    .setTitle("Optimized " + pack.mc)
+                    .setTitle("Optimized " + pack.displayName())
                     .setMessage("Esta versión ya está instalada. Si pulsás instalar de nuevo se vuelven a bajar los mods.")
                     .setPositiveButton("Usar este perfil", (d, w) -> {
-                        OptimizedInstaller.selectProfile(pack.mc);
+                        OptimizedInstaller.selectProfile(pack);
                         Toast.makeText(requireContext(), "Perfil activo. Pulsá Jugar.", Toast.LENGTH_LONG).show();
                     })
                     .setNeutralButton("Reinstalar", (d, w) -> startInstall(pack, b, true))
@@ -191,12 +191,12 @@ public class OptimizedFragment extends Fragment {
                 });
             } catch (OptimizedInstaller.ForgeGuiNeeded forge) {
                 LauncherPreferences.DEFAULT_PREF.edit()
-                        .putString(OptimizedInstaller.PREF_PENDING_FORGE_MC, pack.mc)
+                        .putString(OptimizedInstaller.PREF_PENDING_FORGE_MC, pack.key())
                         .commit();
                 Tools.runOnUiThread(() -> {
                     if (mBar != null) mBar.setVisibility(View.GONE);
                     if (b != null) b.setEnabled(true);
-                    if (mStatus != null) mStatus.setText("Abriendo instalador Forge " + pack.mc + "…");
+                    if (mStatus != null) mStatus.setText("Abriendo instalador Forge " + pack.displayName() + "…");
                     startActivity(OptimizedInstaller.forgeInstallIntent(requireContext(), forge.installerJar, pack));
                     Toast.makeText(requireContext(), "Cuando el instalador diga éxito, volvé a Optimized.", Toast.LENGTH_LONG).show();
                 });

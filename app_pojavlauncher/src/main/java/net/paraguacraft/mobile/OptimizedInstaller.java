@@ -61,22 +61,35 @@ public final class OptimizedInstaller {
 
     private OptimizedInstaller() {}
 
-    public static String profileName(String mc) {
-        return "Optimized " + mc;
+    public static String profileName(OptimizedManifest.Pack pack) {
+        return pack != null ? "Optimized " + pack.displayName() : "Optimized";
+    }
+
+    public static String profileName(String mcOrKey) {
+        if ("1.20.1-forge".equalsIgnoreCase(mcOrKey) || "1.20.1 Forge".equalsIgnoreCase(mcOrKey)) {
+            return "Optimized 1.20.1 Forge";
+        }
+        return "Optimized " + mcOrKey;
+    }
+
+    public static String gameDirName(OptimizedManifest.Pack pack) {
+        return "optimized-" + (pack != null ? pack.key() : "default");
     }
 
     public static synchronized void install(Context ctx, OptimizedManifest.Pack pack, Progress progress) throws Exception {
         String tier = DeviceTier.current(ctx);
         boolean lite = DeviceTier.LITE.equals(tier);
-        progress.onMessage("Instalando Optimized " + pack.mc + " (" + pack.loader + ")");
+        progress.onMessage("Instalando Optimized " + pack.displayName() + " (" + pack.loader + ")");
 
         String versionId;
-        MinecraftProfile existingProfile = findProfile(pack.mc);
+        MinecraftProfile existingProfile = findProfile(pack);
         if ("forge".equals(pack.loader)) {
             versionId = findForgeVersionId(pack);
             if (versionId == null) {
-                progress.onMessage("Preparando Java 8 para Forge…");
-                ensureJava8(ctx);
+                if (pack.javaMajor <= 8) {
+                    progress.onMessage("Preparando Java 8 para Forge…");
+                    ensureJava8(ctx);
+                }
                 File staleShared = new File(Tools.DIR_CACHE, "forge-installer.jar");
                 if (staleShared.isFile()) {
                     //noinspection ResultOfMethodCallIgnored
@@ -85,7 +98,7 @@ public final class OptimizedInstaller {
                 if (ForgeLegacyInstall.isLegacyMc(pack.mc)) {
                     versionId = ForgeLegacyInstall.install(ctx, pack, progress);
                 } else {
-                    progress.onMessage("Descargando instalador Forge " + pack.mc + " " + pack.loaderVersion);
+                    progress.onMessage("Descargando instalador y librerías Forge " + pack.mc + " " + pack.loaderVersion + "…");
                     File installer = downloadForgeInstaller(pack);
                     throw new ForgeGuiNeeded(pack, installer);
                 }
@@ -102,23 +115,23 @@ public final class OptimizedInstaller {
             throw new IOException("Loader no soportado: " + pack.loader);
         }
 
-        File gameDir = new File(Tools.DIR_GAME_HOME, "optimized-" + pack.mc);
+        File gameDir = new File(Tools.DIR_GAME_HOME, gameDirName(pack));
         //noinspection ResultOfMethodCallIgnored
         gameDir.mkdirs();
         File mods = new File(gameDir, "mods");
         //noinspection ResultOfMethodCallIgnored
         mods.mkdirs();
 
-        if (pack.modrinth != null) {
-            for (int i = 0; i < pack.modrinth.length(); i++) {
-                JSONObject pin = pack.modrinth.getJSONObject(i);
-                String slug = pin.getString("slug");
-                if (pin.optBoolean("mobileSkip", false)) continue;
-                if ("voxy".equals(slug) || "nvidium".equals(slug) || "oculus".equals(slug)) continue;
-                if (lite && !pin.optBoolean("mobileLite", false) && !"iris".equals(slug)) continue;
-                progress.onMessage("Mod " + slug);
-                downloadModrinthVersion(pin.getString("versionId"), mods);
+        if (pack.hosted != null && ctx != null) {
+            for (int i = 0; i < pack.hosted.length(); i++) {
+                String filename = pack.hosted.optString(i, "");
+                if (filename.isEmpty()) continue;
+                installHostedAssetMod(ctx, filename, mods, progress);
             }
+        }
+
+        if (pack.modrinth != null) {
+            downloadModrinthPinsParallel(pack.modrinth, lite, mods, progress);
         }
         if (pack.optifine != null) {
             downloadOptiFine(pack, mods, progress);
@@ -137,19 +150,19 @@ public final class OptimizedInstaller {
             }
         }
 
-        applyOptions(ctx, gameDir, pack.mc, tier);
+        applyOptionsIfNeeded(ctx, gameDir, pack.mc, tier);
         writeSodiumHints(ctx, gameDir, pack, tier);
         if ("fabric".equals(pack.loader)) {
-            installIrisShaders(ctx, gameDir, pack.mc, tier, progress, true);
+            installIrisShaders(ctx, gameDir, pack.mc, tier, progress, false);
         }
         BrandPack.inject(ctx, gameDir, pack.mc);
         MobileCompat.sanitizeGameDir(gameDir);
         writeProfile(ctx, pack, versionId, gameDir, tier);
-        progress.onMessage("Listo: " + profileName(pack.mc));
+        progress.onMessage("Listo: " + profileName(pack));
     }
 
     public static void reinstallMods(Context ctx, OptimizedManifest.Pack pack, Progress progress) throws Exception {
-        File gameDir = new File(Tools.DIR_GAME_HOME, "optimized-" + pack.mc);
+        File gameDir = new File(Tools.DIR_GAME_HOME, gameDirName(pack));
         File mods = new File(gameDir, "mods");
         if (mods.isDirectory()) {
             File[] jars = mods.listFiles();
@@ -200,6 +213,9 @@ public final class OptimizedInstaller {
         MCOptionUtils.set("guiScale", tablet ? "3" : "2");
         MCOptionUtils.set("entityShadows", "false");
         MCOptionUtils.set("renderClouds", "false");
+        MCOptionUtils.set("syncChunkWrites", "false");
+        MCOptionUtils.set("useNativeTransport", "false");
+        MCOptionUtils.set("pauseOnLostFocus", "false");
         if (legacy) {
             MCOptionUtils.set("fancyGraphics", lite || gpu == DeviceProbe.GpuClass.WEAK ? "false" : "true");
             MCOptionUtils.set("ao", lite || gpu == DeviceProbe.GpuClass.WEAK ? "0" : "1");
@@ -210,7 +226,7 @@ public final class OptimizedInstaller {
             MCOptionUtils.set("graphicsMode", lite || gpu == DeviceProbe.GpuClass.WEAK ? "0" : "1");
             MCOptionUtils.set("ao", lite || gpu == DeviceProbe.GpuClass.WEAK ? "false" : "true");
             MCOptionUtils.set("entityDistanceScaling", entity);
-            MCOptionUtils.set("mipmapLevels", gpu == DeviceProbe.GpuClass.WEAK ? "0" : "1");
+            MCOptionUtils.set("mipmapLevels", gpu == DeviceProbe.GpuClass.STRONG && alta ? "1" : "0");
             MCOptionUtils.set("biomeBlendRadius", gpu == DeviceProbe.GpuClass.STRONG ? "1" : "0");
             MCOptionUtils.set("prioritizeChunkUpdates", "0");
         }
@@ -221,21 +237,18 @@ public final class OptimizedInstaller {
     }
 
     public static final String TUNED_MARKER = ".paraguacraft_optimized_tuned";
-    public static final String TUNED_VERSION = "v13";
+    public static final String TUNED_VERSION = "v14";
 
+    /**
+     * Aplica la configuración inicial por gama solo una vez por instancia.
+     * Si el marcador ya existe y options.txt está presente, respeta cualquier cambio
+     * manual que haya hecho el jugador dentro del juego o en los mods.
+     */
     public static void applyOptionsIfNeeded(Context ctx, File gameDir, String mc, String tier) {
         File marker = new File(gameDir, TUNED_MARKER);
-        String wantUncap = String.valueOf(ctx != null && DeviceTier.uncapFps(ctx));
-        if (marker.isFile()) {
-            try {
-                String have = Tools.read(marker.getAbsolutePath());
-                if (have.contains("version=" + TUNED_VERSION)
-                        && have.contains("tier=" + tier)
-                        && have.contains("mc=" + mc)
-                        && have.contains("uncap=" + wantUncap)) {
-                    return;
-                }
-            } catch (Exception ignored) {}
+        File optionsFile = new File(gameDir, "options.txt");
+        if (marker.isFile() && optionsFile.isFile()) {
+            return;
         }
         applyOptions(ctx, gameDir, mc, tier);
     }
@@ -419,9 +432,9 @@ public final class OptimizedInstaller {
     }
 
     public static boolean isInstalled(OptimizedManifest.Pack pack) {
-        MinecraftProfile p = findProfile(pack.mc);
+        MinecraftProfile p = findProfile(pack);
         if (p == null) return false;
-        File mods = new File(new File(Tools.DIR_GAME_HOME, "optimized-" + pack.mc), "mods");
+        File mods = new File(new File(Tools.DIR_GAME_HOME, gameDirName(pack)), "mods");
         if (!mods.isDirectory()) return false;
         File[] jars = mods.listFiles((d, n) -> n.endsWith(".jar"));
         return jars != null && jars.length > 0;
@@ -478,6 +491,20 @@ public final class OptimizedInstaller {
         return loader.getInstallationIntent(ctx, installer);
     }
 
+    private static void installHostedAssetMod(Context ctx, String filename, File modsDir, Progress progress) {
+        File dest = new File(modsDir, filename);
+        if (dest.isFile() && dest.length() > 1024) return;
+        progress.onMessage("Mod " + filename);
+        try (java.io.InputStream in = ctx.getAssets().open("paraguacraft/optimized-mods/" + filename);
+             java.io.FileOutputStream out = new java.io.FileOutputStream(dest)) {
+            byte[] buf = new byte[16384];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        } catch (Exception e) {
+            Log.w(TAG, "Hosted mod skip " + filename, e);
+        }
+    }
+
     private static void downloadOptiFine(OptimizedManifest.Pack pack, File mods, Progress progress) throws Exception {
         JSONObject of = pack.optifine;
         if (of == null) return;
@@ -505,23 +532,47 @@ public final class OptimizedInstaller {
         DownloadUtils.downloadFile(url, dest);
     }
 
+    private static void writeIfMissing(File file, String content) {
+        if (file.isFile() && file.length() > 0) return;
+        try {
+            Tools.write(file.getAbsolutePath(), content);
+        } catch (Exception e) {
+            Log.w(TAG, "writeIfMissing " + file.getName(), e);
+        }
+    }
+
     private static void writeSodiumHints(Context ctx, File gameDir, OptimizedManifest.Pack pack, String tier) {
-        if (!"fabric".equals(pack.loader)) return;
         File cfg = new File(gameDir, "config");
         //noinspection ResultOfMethodCallIgnored
         cfg.mkdirs();
         DeviceProbe.GpuClass gpu = ctx != null ? DeviceTier.probe(ctx).gpuClass : DeviceProbe.GpuClass.MID;
         int threads = gpu == DeviceProbe.GpuClass.WEAK ? 1 : gpu == DeviceProbe.GpuClass.STRONG ? 3 : 2;
         try {
-            Tools.write(new File(cfg, "sodium-options.json").getAbsolutePath(),
-                    "{\"quality\":{\"pixel_filtering_mode\":\"NEAREST\"},\"performance\":{\"chunk_builder_threads\":"
-                            + threads
-                            + ",\"chunk_build_defer_mode\":\"ALWAYS\",\"animate_only_visible_textures\":true,\"use_entity_culling\":true,\"use_fog_occlusion\":true,\"use_block_face_culling\":true,\"use_no_error_g_l_context\":false},\"advanced\":{\"cpu_render_ahead_limit\":3}}");
-            boolean uncap = ctx != null && DeviceTier.uncapFps(ctx);
-            int fps = ctx != null ? DeviceTier.fpsCap(ctx) : 60;
-            Tools.write(new File(cfg, "sodium-extra-options.json").getAbsolutePath(),
-                    "{\"overlay\":{\"show_fps\":true},\"extra\":{\"steady_debug_fps\":false},\"performance\":{\"fps_limit\":"
-                            + (uncap ? 0 : fps) + "}}");
+            if ("fabric".equals(pack.loader)) {
+                writeIfMissing(new File(cfg, "sodium-options.json"),
+                        "{\"quality\":{\"pixel_filtering_mode\":\"NEAREST\"},\"performance\":{\"chunk_builder_threads\":"
+                                + threads
+                                + ",\"chunk_build_defer_mode\":\"ALWAYS\",\"animate_only_visible_textures\":true,\"use_entity_culling\":true,\"use_fog_occlusion\":true,\"use_block_face_culling\":true,\"use_no_error_g_l_context\":false},\"advanced\":{\"cpu_render_ahead_limit\":3}}");
+                boolean uncap = ctx != null && DeviceTier.uncapFps(ctx);
+                int fps = ctx != null ? DeviceTier.fpsCap(ctx) : 60;
+                writeIfMissing(new File(cfg, "sodium-extra-options.json"),
+                        "{\"overlay\":{\"show_fps\":true},\"extra\":{\"steady_debug_fps\":false},\"performance\":{\"fps_limit\":"
+                                + (uncap ? 0 : fps) + "}}");
+            } else if ("forge".equals(pack.loader) && !ForgeLegacyInstall.isLegacyMc(pack.mc) && !"1.12.2".equals(pack.mc)) {
+                writeIfMissing(new File(cfg, "embeddium-options.json"),
+                        "{\"quality\":{\"weather_quality\":\"FAST\",\"leaves_quality\":\"FAST\",\"enable_vignette\":false},\"performance\":{\"chunk_builder_threads\":"
+                                + threads
+                                + ",\"always_defer_chunk_updates_v2\":true,\"animate_only_visible_textures\":true,\"use_entity_culling\":true,\"use_fog_occlusion\":true,\"use_block_face_culling\":true,\"use_compact_vertex_format\":true,\"use_no_error_g_l_context\":false},\"advanced\":{\"use_advanced_staging_buffers\":false,\"cpu_render_ahead_limit\":3}}");
+            }
+            if (!ForgeLegacyInstall.isLegacyMc(pack.mc) && !"1.12.2".equals(pack.mc)) {
+                writeIfMissing(new File(cfg, "modernfix-mixins.properties"),
+                        "mixin.perf.dynamic_resources=true\nmixin.perf.faster_item_rendering=true\nmixin.launch.class_search_cache=true\nmixin.perf.clear_mixin_classinfo=true\n");
+                writeIfMissing(new File(cfg, "immediatelyfast.json"),
+                        "{\"font_atlas_resizing\":false,\"map_atlas_generation\":true,\"hud_batching\":true,\"fast_text_lookup\":true,\"fast_buffer_upload\":true,\"experimental_screen_batching\":false}\n");
+                writeIfMissing(new File(cfg, "smoothboot.json"),
+                        "{\"threadCount\":{\"bootstrap\":1,\"main\":" + Math.max(2, threads)
+                                + "},\"threadPriority\":{\"game\":5,\"bootstrap\":5,\"main\":5,\"io\":5,\"integratedServer\":5,\"modLoading\":5}}\n");
+            }
         } catch (Exception e) {
             Log.w(TAG, "sodium-options", e);
         }
@@ -533,7 +584,7 @@ public final class OptimizedInstaller {
 
     public static boolean needsIris(File gameDir) {
         File mods = new File(gameDir, "mods");
-        if (hasModJar(mods, "optifine", null) || hasModJar(mods, "oculus", null)) return false;
+        if (hasModJar(mods, "optifine", null) || hasModJar(mods, "oculus", null) || hasModJar(mods, "embeddium", null)) return false;
         if (hasIrisJar(gameDir)) return false;
         return hasModJar(mods, "sodium", new String[]{"extra", "options", "embed"});
     }
@@ -682,9 +733,72 @@ public final class OptimizedInstaller {
         return dest.isFile() ? name : null;
     }
 
+    private static void downloadModrinthPinsParallel(JSONArray pins, boolean lite, File modsDir, Progress progress) throws Exception {
+        java.util.List<JSONObject> wanted = new java.util.ArrayList<>();
+        StringBuilder idsParam = new StringBuilder("[");
+        for (int i = 0; i < pins.length(); i++) {
+            JSONObject pin = pins.getJSONObject(i);
+            String slug = pin.getString("slug");
+            if (pin.optBoolean("mobileSkip", false)) continue;
+            if ("voxy".equals(slug) || "nvidium".equals(slug) || "oculus".equals(slug)
+                    || "crash-assistant".equals(slug) || "kryptonreforged".equals(slug)) continue;
+            if (lite && !pin.optBoolean("mobileLite", false) && !"iris".equals(slug)) continue;
+            if (!wanted.isEmpty()) idsParam.append(',');
+            idsParam.append('"').append(pin.getString("versionId")).append('"');
+            wanted.add(pin);
+        }
+        idsParam.append(']');
+        if (wanted.isEmpty()) return;
+
+        progress.onMessage("Consultando " + wanted.size() + " mods en Modrinth…");
+        java.util.Map<String, JSONObject> versionMap = new java.util.HashMap<>();
+        try {
+            String encoded = java.net.URLEncoder.encode(idsParam.toString(), StandardCharsets.UTF_8.name());
+            String batchBody = httpGet("https://api.modrinth.com/v2/versions?ids=" + encoded);
+            JSONArray arr = new JSONArray(batchBody);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject v = arr.getJSONObject(i);
+                versionMap.put(v.getString("id"), v);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Batch Modrinth fallback", e);
+        }
+
+        final int total = wanted.size();
+        final java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger(0);
+        final java.util.concurrent.atomic.AtomicReference<Exception> firstErr = new java.util.concurrent.atomic.AtomicReference<>(null);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(Math.min(6, total));
+        for (JSONObject pin : wanted) {
+            final String slug = pin.getString("slug");
+            final String vid = pin.getString("versionId");
+            final JSONObject preloaded = versionMap.get(vid);
+            pool.execute(() -> {
+                if (firstErr.get() != null) return;
+                try {
+                    if (preloaded != null) {
+                        downloadModrinthVersionJson(preloaded, modsDir);
+                    } else {
+                        downloadModrinthVersion(vid, modsDir);
+                    }
+                    int c = done.incrementAndGet();
+                    progress.onMessage("Mods (" + c + "/" + total + "): " + slug);
+                } catch (Exception e) {
+                    firstErr.compareAndSet(null, e);
+                }
+            });
+        }
+        pool.shutdown();
+        //noinspection ResultOfMethodCallIgnored
+        pool.awaitTermination(15, java.util.concurrent.TimeUnit.MINUTES);
+        if (firstErr.get() != null) throw firstErr.get();
+    }
+
     private static void downloadModrinthVersion(String versionId, File modsDir) throws Exception {
         String body = httpGet("https://api.modrinth.com/v2/version/" + versionId);
-        JSONObject json = new JSONObject(body);
+        downloadModrinthVersionJson(new JSONObject(body), modsDir);
+    }
+
+    private static void downloadModrinthVersionJson(JSONObject json, File modsDir) throws Exception {
         JSONArray files = json.getJSONArray("files");
         JSONObject file = files.getJSONObject(0);
         for (int i = 0; i < files.length(); i++) {
@@ -729,11 +843,11 @@ public final class OptimizedInstaller {
 
     private static void writeProfile(Context ctx, OptimizedManifest.Pack pack, String versionId, File gameDir, String tier) {
         LauncherProfiles.load();
-        MinecraftProfile existing = findProfile(pack.mc);
+        MinecraftProfile existing = findProfile(pack);
         MinecraftProfile p = existing != null ? existing : new MinecraftProfile();
-        p.name = profileName(pack.mc);
+        p.name = profileName(pack);
         p.lastVersionId = versionId;
-        p.gameDir = "./optimized-" + pack.mc;
+        p.gameDir = "./" + gameDirName(pack);
         p.pojavRendererName = DeviceTier.renderer(ctx, tier);
         if (pack.mc.equals("1.8.9") || pack.mc.equals("1.12.2")) {
             String java8 = MultiRTUtils.getExactJreName(8);
@@ -752,25 +866,33 @@ public final class OptimizedInstaller {
             }
         }
         LauncherProfiles.write();
-        selectProfile(pack.mc);
+        selectProfile(pack);
         Log.i(TAG, "Profile " + p.name + " -> " + versionId);
     }
 
-    public static MinecraftProfile findProfile(String mc) {
+    public static MinecraftProfile findProfile(OptimizedManifest.Pack pack) {
+        return pack != null ? findProfile(pack.key()) : null;
+    }
+
+    public static MinecraftProfile findProfile(String mcOrKey) {
         LauncherProfiles.load();
         if (LauncherProfiles.mainProfileJson == null || LauncherProfiles.mainProfileJson.profiles == null)
             return null;
-        String want = profileName(mc);
+        String want = profileName(mcOrKey);
         for (MinecraftProfile p : LauncherProfiles.mainProfileJson.profiles.values()) {
             if (p != null && want.equals(p.name)) return p;
         }
         return null;
     }
 
-    public static void selectProfile(String mc) {
+    public static void selectProfile(OptimizedManifest.Pack pack) {
+        if (pack != null) selectProfile(pack.key());
+    }
+
+    public static void selectProfile(String mcOrKey) {
         LauncherProfiles.load();
         if (LauncherProfiles.mainProfileJson == null) return;
-        String want = profileName(mc);
+        String want = profileName(mcOrKey);
         for (java.util.Map.Entry<String, MinecraftProfile> e : LauncherProfiles.mainProfileJson.profiles.entrySet()) {
             if (e.getValue() != null && want.equals(e.getValue().name)) {
                 LauncherPreferences.DEFAULT_PREF.edit()

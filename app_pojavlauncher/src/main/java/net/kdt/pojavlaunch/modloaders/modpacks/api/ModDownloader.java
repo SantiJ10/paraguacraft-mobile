@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class ModDownloader {
     private static final ThreadLocal<byte[]> sThreadLocalBuffer = new ThreadLocal<>();
-    private final ThreadPoolExecutor mDownloadPool = new ThreadPoolExecutor(4,4,100, TimeUnit.MILLISECONDS,
+    private final ThreadPoolExecutor mDownloadPool = new ThreadPoolExecutor(8, 8, 100, TimeUnit.MILLISECONDS,
             new LinkedBlockingQueue<>());
     private final AtomicBoolean mTerminator = new AtomicBoolean(false);
     private final AtomicLong mDownloadSize = new AtomicLong(0);
@@ -70,7 +70,7 @@ public class ModDownloader {
     private static byte[] getThreadLocalBuffer() {
         byte[] buffer = sThreadLocalBuffer.get();
         if(buffer != null) return buffer;
-        buffer = new byte[8192];
+        buffer = new byte[65536];
         sThreadLocalBuffer.set(buffer);
         return buffer;
     }

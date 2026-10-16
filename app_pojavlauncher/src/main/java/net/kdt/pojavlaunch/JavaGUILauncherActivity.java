@@ -205,6 +205,15 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
             finalErrorDialog(getString(R.string.execute_jar_failed_to_read_file));
             return null;
         }
+        if (javaVersion <= 8 && shouldPreferJava17ForInstaller(modFile)) {
+            String jre17 = MultiRTUtils.getNearestJreName(17);
+            if (jre17 != null) {
+                Runtime rt17 = MultiRTUtils.forceReread(jre17);
+                if (rt17 != null && rt17.javaVersion >= 17) {
+                    return rt17;
+                }
+            }
+        }
         String nearestRuntime = MultiRTUtils.getNearestJreName(javaVersion);
         if(nearestRuntime == null) {
             finalErrorDialog(getString(R.string.multirt_nocompatiblert, javaVersion));
@@ -213,6 +222,18 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
         Runtime selectedRuntime = MultiRTUtils.forceReread(nearestRuntime);
         int selectedJavaVersion = Math.max(javaVersion, selectedRuntime.javaVersion);
         return selectedRuntime;
+    }
+
+    private boolean shouldPreferJava17ForInstaller(File modFile) {
+        if (modFile == null) return false;
+        String name = modFile.getName().toLowerCase();
+        if (!name.contains("forge") && !name.contains("installer")) return false;
+        for (int minor = 7; minor <= 16; minor++) {
+            if (name.contains("1." + minor + ".") || name.contains("1." + minor + "-")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private File findModPath(List<String> argList) {

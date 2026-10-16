@@ -82,15 +82,20 @@ public final class PgShell {
         MinecraftProfile p = LauncherProfiles.mainProfileJson.profiles.get(pid);
         if (p == null) return;
         if (p.name != null && p.name.startsWith("Optimized ")) {
-            b.putString("instance_mc", p.name.substring("Optimized ".length()).trim());
+            b.putString("instance_mc", p.name.substring("Optimized ".length())
+                    .replace("Forge", "")
+                    .replace("Fabric", "")
+                    .trim());
         } else if (p.lastVersionId != null) {
-            Matcher m = Pattern.compile("(1\\.\\d+(?:\\.\\d+)?)").matcher(p.lastVersionId);
+            Matcher m = Pattern.compile("(1\\.\\d+(?:\\.\\d+)?|26\\.\\d+)").matcher(p.lastVersionId);
             if (m.find()) b.putString("instance_mc", m.group(1));
         }
         if (p.lastVersionId != null) {
             String id = p.lastVersionId.toLowerCase();
             if (id.contains("forge")) b.putString("instance_loader", "forge");
             else if (id.contains("fabric") || id.contains("quilt")) b.putString("instance_loader", "fabric");
+        } else if (p.name != null && p.name.toLowerCase().contains("forge")) {
+            b.putString("instance_loader", "forge");
         }
     }
 

@@ -100,13 +100,16 @@ public final class DeviceTier {
         int want;
         switch (tier) {
             case ALTA:
-                want = 2304;
+                want = p.ramTotalMb >= 7168 ? 2560 : 2304;
                 break;
             case MEDIA:
-                want = 1536;
+                if (p.ramTotalMb >= 7168) want = 2176;
+                else if (p.ramTotalMb >= 5632) want = 1920;
+                else if (p.ramTotalMb >= 4096) want = 1664;
+                else want = 1536;
                 break;
             default:
-                want = 1024;
+                want = p.ramTotalMb >= 5632 ? 1408 : (p.ramTotalMb >= 4096 ? 1280 : 1024);
                 break;
         }
         return Math.min(want, max);

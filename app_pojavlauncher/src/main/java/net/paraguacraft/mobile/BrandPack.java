@@ -30,7 +30,7 @@ import java.util.zip.ZipOutputStream;
 public final class BrandPack {
     public static final String PACK_NAME = "ParaguacraftBrandPack";
     private static final String TAG = "PgBrand";
-    private static final String STAMP = "v3";
+    private static final String STAMP = "v4";
 
     private BrandPack() {}
 
@@ -87,35 +87,104 @@ public final class BrandPack {
 
     private static String mcFromProfile(MinecraftProfile p) {
         if (p.name != null && p.name.startsWith("Optimized ")) {
-            return p.name.substring("Optimized ".length()).trim();
+            String v = p.name.substring("Optimized ".length()).trim();
+            if (v.endsWith(" Forge")) v = v.substring(0, v.length() - " Forge".length()).trim();
+            if (v.endsWith(" Fabric")) v = v.substring(0, v.length() - " Fabric".length()).trim();
+            return v;
         }
-        if (p.lastVersionId != null) {
-            String id = p.lastVersionId;
-            if (id.contains("1.8.9")) return "1.8.9";
-            if (id.contains("1.12.2")) return "1.12.2";
-            if (id.contains("1.18.2")) return "1.18.2";
-            if (id.contains("1.20.1")) return "1.20.1";
-            if (id.contains("1.21.11")) return "1.21.11";
-            if (id.contains("26.2")) return "26.2";
+        if (p.lastVersionId != null && !p.lastVersionId.trim().isEmpty()) {
+            return p.lastVersionId.trim();
         }
         return "1.21.11";
     }
 
-    static int mcMajor(String mc) {
-        if (mc.startsWith("26")) return 26;
-        String[] p = mc.split("\\.");
-        if (p.length >= 2) {
-            try { return Integer.parseInt(p[1]); } catch (Exception ignored) {}
+    private static int parseLeadingUint(String s) {
+        if (s == null) return -1;
+        String t = s.trim();
+        int end = 0;
+        while (end < t.length() && Character.isDigit(t.charAt(end))) end++;
+        if (end == 0) return -1;
+        try {
+            return Integer.parseInt(t.substring(0, end));
+        } catch (Exception e) {
+            return -1;
         }
-        return 20;
+    }
+
+    private static int[] parseMcMajorMinor(String mc) {
+        if (mc == null || mc.trim().isEmpty()) return new int[]{21, 11};
+        String raw = mc.trim().toLowerCase();
+
+        // Betas, Alphas, Classic, Infdev, Indev
+        if (raw.startsWith("b1.") || raw.startsWith("beta")
+                || raw.startsWith("a1.") || raw.startsWith("a0.") || raw.startsWith("alpha")
+                || raw.startsWith("c0.") || raw.startsWith("inf-") || raw.startsWith("in-")
+                || raw.startsWith("rd-")) {
+            return new int[]{5, 0};
+        }
+
+        // Snapshots semanales YYwWWa (ej. 24w14a, 25w02a, 26w10a)
+        if (raw.length() >= 5
+                && Character.isDigit(raw.charAt(0))
+                && Character.isDigit(raw.charAt(1))
+                && raw.charAt(2) == 'w'
+                && Character.isDigit(raw.charAt(3))
+                && Character.isDigit(raw.charAt(4))) {
+            int yy = (raw.charAt(0) - '0') * 10 + (raw.charAt(1) - '0');
+            int ww = (raw.charAt(3) - '0') * 10 + (raw.charAt(4) - '0');
+            if (yy >= 26) return new int[]{26, 3};
+            if (yy == 25) return ww >= 40 ? new int[]{26, 0} : new int[]{21, 11};
+            if (yy == 24) return ww >= 33 ? new int[]{21, 4} : new int[]{21, 1};
+            if (yy == 23) return ww >= 31 ? new int[]{20, 4} : new int[]{20, 1};
+            if (yy == 22) return new int[]{19, 3};
+            if (yy == 21) return new int[]{18, 0};
+            if (yy == 20) return new int[]{16, 4};
+            if (yy == 19) return new int[]{15, 0};
+            if (yy == 18) return new int[]{14, 0};
+            if (yy == 17) return new int[]{13, 0};
+            if (yy == 16) return new int[]{11, 0};
+            if (yy == 15) return new int[]{9, 0};
+            if (yy == 14) return new int[]{8, 0};
+            if (yy == 13) return ww >= 16 ? new int[]{6, 0} : new int[]{5, 0};
+            return new int[]{5, 0};
+        }
+
+        // Tokens directos o con sufijos de loaders (ej. "1.20.1-forge-47.4.10", "fabric-loader-0.16.10-1.21.4", "1.21.4-pre2", "26.3")
+        String[] tokens = raw.split("[\\s/\\\\-]+");
+        for (String tok : tokens) {
+            String[] p = tok.split("\\.");
+            if (p.length >= 2) {
+                int first = parseLeadingUint(p[0]);
+                int second = parseLeadingUint(p[1]);
+                if (first >= 26 && second >= 0) {
+                    return new int[]{first, second};
+                }
+                if (first == 1 && second >= 1 && second <= 25) {
+                    int third = p.length >= 3 ? Math.max(0, parseLeadingUint(p[2])) : 0;
+                    return new int[]{second, third};
+                }
+            }
+        }
+
+        String[] p = raw.split("\\.");
+        if (p.length >= 2) {
+            int first = parseLeadingUint(p[0]);
+            int second = parseLeadingUint(p[1]);
+            if (first >= 26) return new int[]{first, Math.max(0, second)};
+            if (first == 1 && second >= 0) {
+                int third = p.length >= 3 ? Math.max(0, parseLeadingUint(p[2])) : 0;
+                return new int[]{second, third};
+            }
+        }
+        return new int[]{20, 0};
+    }
+
+    static int mcMajor(String mc) {
+        return parseMcMajorMinor(mc)[0];
     }
 
     static int mcMinor(String mc) {
-        String[] p = mc.split("\\.");
-        if (p.length >= 3) {
-            try { return Integer.parseInt(p[2]); } catch (Exception ignored) {}
-        }
-        return 0;
+        return parseMcMajorMinor(mc)[1];
     }
 
     static int packFormat(String mc) {
@@ -154,12 +223,8 @@ public final class BrandPack {
     private static String packMcmeta(String mc) {
         int fmt = packFormat(mc);
         int major = mcMajor(mc);
-        int minor = mcMinor(mc);
-        if (fmt >= 65 || major >= 26 || (major == 21 && minor >= 9)) {
-            return "{\"pack\":{\"pack_format\":" + fmt + ",\"description\":\"Marca Oficial Paraguacraft\",\"min_format\":[" + fmt + ",0],\"max_format\":[" + fmt + ",0]}}";
-        }
-        if (fmt >= 18) {
-            return "{\"pack\":{\"pack_format\":" + fmt + ",\"description\":\"Marca Oficial Paraguacraft\",\"supported_formats\":[" + fmt + "," + fmt + "]}}";
+        if (fmt >= 15 || major >= 20) {
+            return "{\"pack\":{\"pack_format\":" + fmt + ",\"description\":\"Marca Oficial Paraguacraft\",\"supported_formats\":[1,999],\"min_format\":[1,0],\"max_format\":[999,0]}}";
         }
         return "{\"pack\":{\"pack_format\":" + fmt + ",\"description\":\"Marca Oficial Paraguacraft\"}}";
     }
@@ -169,6 +234,7 @@ public final class BrandPack {
         //noinspection ResultOfMethodCallIgnored
         titleDir.mkdirs();
         Tools.write(new File(packDir, "pack.mcmeta").getAbsolutePath(), packMcmeta(mc));
+        Tools.write(new File(packDir, "pack.txt").getAbsolutePath(), "Marca Oficial Paraguacraft");
         Bitmap packIcon = loadAssetBitmap(ctx, "paraguacraft/brand/pack.png");
         if (packIcon != null) {
             savePng(packIcon, new File(packDir, "pack.png"));
@@ -176,6 +242,17 @@ public final class BrandPack {
         }
         Bitmap minecraft = bakeMinecraftPng(ctx, mc);
         savePng(minecraft, new File(titleDir, "minecraft.png"));
+        if (mcMajor(mc) < 6) {
+            File classicTitle = new File(packDir, "title");
+            File classicGuiTitle = new File(packDir, "gui/title");
+            //noinspection ResultOfMethodCallIgnored
+            classicTitle.mkdirs();
+            //noinspection ResultOfMethodCallIgnored
+            classicGuiTitle.mkdirs();
+            savePng(minecraft, new File(classicTitle, "mclogo.png"));
+            savePng(minecraft, new File(classicGuiTitle, "minecraft.png"));
+            copyAsset(ctx, "paraguacraft/brand/paraguacraft_startup.png", new File(classicTitle, "mojang.png"));
+        }
         minecraft.recycle();
         copyAsset(ctx, "paraguacraft/brand/paraguacraft_startup.png", new File(titleDir, "mojangstudios.png"));
         copyAsset(ctx, "paraguacraft/brand/paraguacraft_startup.png", new File(titleDir, "mojang.png"));
@@ -381,6 +458,7 @@ public final class BrandPack {
         MCOptionUtils.load(gameDir.getAbsolutePath());
         int major = mcMajor(mc);
         if (major < 6) {
+            MCOptionUtils.set("skin", PACK_NAME + ".zip");
             MCOptionUtils.set("texturePack", PACK_NAME + ".zip");
             MCOptionUtils.set("texturepack", PACK_NAME + ".zip");
             MCOptionUtils.save();
@@ -405,6 +483,22 @@ public final class BrandPack {
         }
         sb.append(']');
         MCOptionUtils.set("resourcePacks", sb.toString());
+
+        String incomp = MCOptionUtils.get("incompatibleResourcePacks");
+        if (incomp != null && incomp.contains(PACK_NAME)) {
+            List<String> incompList = parsePacks(incomp);
+            StringBuilder isb = new StringBuilder("[");
+            boolean first = true;
+            for (String p : incompList) {
+                if (p.contains(PACK_NAME)) continue;
+                if (!first) isb.append(',');
+                first = false;
+                isb.append('"').append(p.replace("\"", "\\\"")).append('"');
+            }
+            isb.append(']');
+            MCOptionUtils.set("incompatibleResourcePacks", isb.toString());
+        }
+
         MCOptionUtils.save();
     }
 

@@ -206,10 +206,9 @@ public class LauncherActivity extends BaseActivity {
             MobileCompat.sanitizeGameDir(gameDir);
             StoreInstall.repairSaves(gameDir);
             String mc = mcVersionOf(prof);
-            if (prof.name != null && prof.name.startsWith("Optimized ")) {
-                mc = prof.name.substring("Optimized ".length()).trim();
+            if (!new File(gameDir, "options.txt").isFile()) {
+                OptimizedInstaller.applyFpsOnly(this, gameDir, mc, DeviceTier.current(this));
             }
-            OptimizedInstaller.applyFpsOnly(this, gameDir, mc, DeviceTier.current(this));
             if (!mIrisAttempted && OptimizedInstaller.needsIris(gameDir)) {
                 mIrisAttempted = true;
                 final String irisMc = mc;
@@ -229,7 +228,7 @@ public class LauncherActivity extends BaseActivity {
         } catch (Exception ignored) {}
         if (prof.name != null && prof.name.startsWith("Optimized ")) {
             try {
-                String mc = prof.name.substring("Optimized ".length()).trim();
+                String mc = mcVersionOf(prof);
                 OptimizedInstaller.applyOptionsIfNeeded(this, gameDir, mc, DeviceTier.current(this));
             } catch (Exception ignored) {}
         }
@@ -538,7 +537,10 @@ public class LauncherActivity extends BaseActivity {
     public static String mcVersionOf(MinecraftProfile p) {
         if (p == null) return "";
         if (p.name != null && p.name.startsWith("Optimized ")) {
-            return p.name.substring("Optimized ".length()).trim();
+            return p.name.substring("Optimized ".length())
+                    .replace("Forge", "")
+                    .replace("Fabric", "")
+                    .trim();
         }
         String id = p.lastVersionId != null ? p.lastVersionId : "";
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("(1\\.\\d+(?:\\.\\d+)?|26\\.\\d+)").matcher(id);

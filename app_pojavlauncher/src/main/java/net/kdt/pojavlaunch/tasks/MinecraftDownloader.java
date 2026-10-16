@@ -149,9 +149,9 @@ public class MinecraftDownloader {
         downloadAndProcessMetadata(activity, verInfo, versionName);
 
         ArrayBlockingQueue<Runnable> taskQueue =
-                new ArrayBlockingQueue<>(mScheduledDownloadTasks.size(), false);
+                new ArrayBlockingQueue<>(Math.max(1, mScheduledDownloadTasks.size()), false);
         ThreadPoolExecutor downloaderPool =
-                new ThreadPoolExecutor(4, 4, 500, TimeUnit.MILLISECONDS, taskQueue);
+                new ThreadPoolExecutor(8, 8, 500, TimeUnit.MILLISECONDS, taskQueue);
 
         // I have tried pre-filling the queue directly instead of doing this, but it didn't work.
         // What a shame.
@@ -326,16 +326,12 @@ public class MinecraftDownloader {
                                   long size, boolean skipIfFailed) throws IOException {
         FileUtils.ensureParentDirectory(targetFile);
         mTotalFileCount++;
-        // Only attempt to check size if we still use the size counter and didn't switch to file counter.
-        if(size <= 0 && !mUseFileCounter) {
-            size = DownloadMirror.getContentLengthMirrored(downloadClass, url);
+        if(size <= 0 && targetFile.isFile() && targetFile.length() > 0) {
+            size = targetFile.length();
         }
-        if(size < 0) {
-            // If we were unable to get the content length ourselves, we automatically fall back
-            // to tracking the progress using the file counter.
+        if(size <= 0) {
             size = 0;
             mUseFileCounter = true;
-            Log.i("MinecraftDownloader", "Failed to determine size of "+targetFile.getName()+", switching to file counter");
         }else {
             mTotalSize += size;
         }
@@ -460,7 +456,7 @@ public class MinecraftDownloader {
     private static byte[] getLocalBuffer() {
         byte[] tlb = sThreadLocalDownloadBuffer.get();
         if(tlb != null) return tlb;
-        tlb = new byte[32768];
+        tlb = new byte[65536];
         sThreadLocalDownloadBuffer.set(tlb);
         return tlb;
     }
@@ -559,6 +555,10 @@ public class MinecraftDownloader {
         }
 
         private void runCatching() throws Exception {
+            if (!LauncherPreferences.PREF_CHECK_LIBRARY_SHA && mTargetPath.isFile() && mTargetPath.length() > 0) {
+                finishWithoutDownloading();
+                return;
+            }
             if(mDownloadClass == DownloadMirror.DOWNLOAD_CLASS_LIBRARIES && !Tools.isValidString(mTargetSha1)) {
                 // If we're downloading a library, try to get sha1 since it might be available as a file
                 tryGetLibrarySha1();
@@ -568,7 +568,7 @@ public class MinecraftDownloader {
             }else {
                 mTargetSha1 = null; // Nullify SHA1 as DownloadUtils.ensureSha1 only checks for null,
                                     // not for string validity
-                if(mTargetPath.exists()) finishWithoutDownloading();
+                if(mTargetPath.exists() && mTargetPath.length() > 0) finishWithoutDownloading();
                 else downloadFile();
             }
         }

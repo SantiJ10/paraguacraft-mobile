@@ -1,16 +1,38 @@
 package net.kdt.pojavlaunch.modloaders;
 
+import android.util.Log;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.kdt.mcgui.ProgressLayout;
 
+import net.kdt.pojavlaunch.JMinecraftVersionList;
 import net.kdt.pojavlaunch.R;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.progresskeeper.ProgressKeeper;
+import net.kdt.pojavlaunch.tasks.AsyncMinecraftDownloader;
 import net.kdt.pojavlaunch.utils.DownloadUtils;
+import net.kdt.pojavlaunch.utils.FileUtils;
+import net.kdt.pojavlaunch.value.MinecraftClientInfo;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
     private String mDownloadUrl;
@@ -22,6 +44,9 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
         this.mListener = listener;
         this.mDownloadUrl = ForgeUtils.getInstallerUrl(forgeVersion);
         this.mFullVersion = forgeVersion;
+        if (forgeVersion != null && forgeVersion.contains("-")) {
+            this.mGameVersion = forgeVersion.substring(0, forgeVersion.indexOf('-'));
+        }
     }
 
     public ForgeDownloadTask(ModloaderDownloadListener listener, String gameVersion, String loaderVersion) {
@@ -48,13 +73,207 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
         try {
             File destinationFile = new File(Tools.DIR_CACHE,
                     "forge-" + (mFullVersion != null ? mFullVersion : "installer") + "-installer.jar");
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[65536];
             DownloadUtils.downloadFileMonitored(mDownloadUrl, destinationFile, buffer, this);
+            prewarmForgeInstaller(destinationFile);
             mListener.onDownloadFinished(destinationFile);
         }catch (FileNotFoundException e) {
             mListener.onDataNotAvailable();
         } catch (IOException e) {
             mListener.onDownloadError(e);
+        }
+    }
+
+    /**
+     * Pre-extracts bundled maven/ artifacts and downloads all Forge installer libraries + vanilla
+     * client JAR in parallel on 8 threads so the single-threaded Swing installer inside
+     * JavaGUILauncherActivity finishes in seconds instead of ~5 minutes.
+     */
+    private void prewarmForgeInstaller(File installerJar) {
+        if (installerJar == null || !installerJar.isFile()) return;
+        List<LibEntry> toDownload = new ArrayList<>();
+        Set<String> seenPaths = new HashSet<>();
+        String detectedMc = mGameVersion;
+
+        try (ZipFile zip = new ZipFile(installerJar)) {
+            Enumeration<? extends ZipEntry> entries = zip.entries();
+            byte[] copyBuf = new byte[65536];
+            while (entries.hasMoreElements()) {
+                ZipEntry ze = entries.nextElement();
+                if (ze.isDirectory()) continue;
+                String name = ze.getName();
+                if (name.startsWith("maven/") && name.length() > "maven/".length()) {
+                    String rel = name.substring("maven/".length());
+                    File out = new File(Tools.DIR_HOME_LIBRARY, rel);
+                    if (!out.isFile() || out.length() == 0) {
+                        FileUtils.ensureParentDirectory(out);
+                        try (InputStream in = zip.getInputStream(ze);
+                             FileOutputStream fos = new FileOutputStream(out)) {
+                            int n;
+                            while ((n = in.read(copyBuf)) > 0) fos.write(copyBuf, 0, n);
+                        } catch (Exception ignored) {}
+                    }
+                }
+            }
+
+            detectedMc = collectLibsFromZipJson(zip, "install_profile.json", toDownload, seenPaths, detectedMc);
+            detectedMc = collectLibsFromZipJson(zip, "version.json", toDownload, seenPaths, detectedMc);
+        } catch (Exception e) {
+            Log.w("ForgePrewarm", "Failed reading installer zip", e);
+        }
+
+        if (detectedMc != null && !detectedMc.isEmpty()) {
+            ensureVanillaClientPrewarmed(detectedMc);
+        }
+
+        if (toDownload.isEmpty()) return;
+
+        int total = toDownload.size();
+        AtomicInteger done = new AtomicInteger(0);
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        List<Future<?>> futures = new ArrayList<>(total);
+        for (LibEntry lib : toDownload) {
+            futures.add(pool.submit(() -> {
+                try {
+                    FileUtils.ensureParentDirectory(lib.target);
+                    DownloadUtils.ensureSha1(lib.target, lib.sha1, () -> {
+                        DownloadUtils.downloadFile(lib.url, lib.target);
+                        return null;
+                    });
+                } catch (Exception e) {
+                    Log.w("ForgePrewarm", "Skipped prewarm of " + lib.url + ": " + e.getMessage());
+                } finally {
+                    int c = done.incrementAndGet();
+                    int pct = Math.min(99, (c * 100) / Math.max(1, total));
+                    ProgressKeeper.submitProgress(
+                            ProgressLayout.INSTALL_MODPACK,
+                            pct,
+                            R.string.forge_dl_progress,
+                            (mFullVersion != null ? mFullVersion : "Forge") + " (" + c + "/" + total + ")"
+                    );
+                }
+            }));
+        }
+        pool.shutdown();
+        for (Future<?> f : futures) {
+            try { f.get(); } catch (Exception ignored) {}
+        }
+    }
+
+    private String collectLibsFromZipJson(ZipFile zip, String entryName, List<LibEntry> out,
+                                          Set<String> seenPaths, String currentMc) {
+        ZipEntry entry = zip.getEntry(entryName);
+        if (entry == null) return currentMc;
+        try (InputStream in = zip.getInputStream(entry)) {
+            String raw = Tools.read(in);
+            JsonObject root = JsonParser.parseString(raw).getAsJsonObject();
+            if (currentMc == null || currentMc.isEmpty()) {
+                if (root.has("minecraft") && root.get("minecraft").isJsonPrimitive()) {
+                    currentMc = root.get("minecraft").getAsString();
+                } else if (root.has("inheritsFrom") && root.get("inheritsFrom").isJsonPrimitive()) {
+                    currentMc = root.get("inheritsFrom").getAsString();
+                }
+            }
+            collectLibsFromArray(root.getAsJsonArray("libraries"), out, seenPaths);
+            if (root.has("versionInfo") && root.get("versionInfo").isJsonObject()) {
+                JsonObject vi = root.getAsJsonObject("versionInfo");
+                collectLibsFromArray(vi.getAsJsonArray("libraries"), out, seenPaths);
+            }
+        } catch (Exception e) {
+            Log.w("ForgePrewarm", "Failed parsing " + entryName, e);
+        }
+        return currentMc;
+    }
+
+    private void collectLibsFromArray(JsonArray libs, List<LibEntry> out, Set<String> seenPaths) {
+        if (libs == null) return;
+        for (JsonElement el : libs) {
+            if (!el.isJsonObject()) continue;
+            JsonObject obj = el.getAsJsonObject();
+            String path = null;
+            String url = null;
+            String sha1 = null;
+            if (obj.has("downloads") && obj.get("downloads").isJsonObject()) {
+                JsonObject dl = obj.getAsJsonObject("downloads");
+                if (dl.has("artifact") && dl.get("artifact").isJsonObject()) {
+                    JsonObject art = dl.getAsJsonObject("artifact");
+                    if (art.has("path")) path = art.get("path").getAsString();
+                    if (art.has("url")) url = art.get("url").getAsString();
+                    if (art.has("sha1")) sha1 = art.get("sha1").getAsString();
+                }
+            }
+            if ((path == null || path.isEmpty()) && obj.has("name")) {
+                path = mavenCoordinateToPath(obj.get("name").getAsString());
+            }
+            if ((url == null || url.isEmpty()) && path != null) {
+                String base = obj.has("url") && !obj.get("url").getAsString().isEmpty()
+                        ? obj.get("url").getAsString()
+                        : "https://maven.minecraftforge.net/";
+                if (!base.endsWith("/")) base += "/";
+                url = base + path;
+            }
+            if (path == null || url == null || url.isEmpty()) continue;
+            if (!seenPaths.add(path)) continue;
+            File target = new File(Tools.DIR_HOME_LIBRARY, path);
+            if (target.isFile() && target.length() > 0) continue;
+            out.add(new LibEntry(target, url, sha1));
+        }
+    }
+
+    private static String mavenCoordinateToPath(String name) {
+        if (name == null || name.isEmpty()) return null;
+        String ext = "jar";
+        int at = name.indexOf('@');
+        if (at >= 0) {
+            ext = name.substring(at + 1);
+            name = name.substring(0, at);
+        }
+        String[] parts = name.split(":");
+        if (parts.length < 3) return null;
+        String group = parts[0].replace('.', '/');
+        String artifact = parts[1];
+        String version = parts[2];
+        String classifier = parts.length >= 4 ? "-" + parts[3] : "";
+        return group + "/" + artifact + "/" + version + "/" + artifact + "-" + version + classifier + "." + ext;
+    }
+
+    private void ensureVanillaClientPrewarmed(String mcVersion) {
+        try {
+            File verDir = new File(Tools.DIR_HOME_VERSION, mcVersion);
+            File verJson = new File(verDir, mcVersion + ".json");
+            File verJar = new File(verDir, mcVersion + ".jar");
+            JMinecraftVersionList.Version listed = AsyncMinecraftDownloader.getListedVersion(mcVersion);
+            if ((!verJson.isFile() || verJson.length() == 0) && listed != null && listed.url != null) {
+                FileUtils.ensureParentDirectory(verJson);
+                DownloadUtils.downloadFile(listed.url, verJson);
+            }
+            if ((!verJar.isFile() || verJar.length() == 0) && verJson.isFile()) {
+                JMinecraftVersionList.Version parsed = Tools.GLOBAL_GSON.fromJson(
+                        Tools.read(verJson.getAbsolutePath()), JMinecraftVersionList.Version.class);
+                if (parsed != null && parsed.downloads != null) {
+                    MinecraftClientInfo client = parsed.downloads.get("client");
+                    if (client != null && client.url != null) {
+                        FileUtils.ensureParentDirectory(verJar);
+                        DownloadUtils.ensureSha1(verJar, client.sha1, () -> {
+                            DownloadUtils.downloadFileMonitored(client.url, verJar, new byte[65536], this);
+                            return null;
+                        });
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w("ForgePrewarm", "Vanilla prewarm skipped for " + mcVersion, e);
+        }
+    }
+
+    private static final class LibEntry {
+        final File target;
+        final String url;
+        final String sha1;
+        LibEntry(File target, String url, String sha1) {
+            this.target = target;
+            this.url = url;
+            this.sha1 = sha1;
         }
     }
 

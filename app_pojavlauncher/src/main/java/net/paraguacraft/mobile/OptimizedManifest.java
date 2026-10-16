@@ -15,13 +15,24 @@ public final class OptimizedManifest {
     public final JSONObject root;
 
     public static class Pack {
+        public String id;
         public String mc;
         public String loader;
         public String loaderVersion;
         public int javaMajor;
+        public JSONArray hosted;
         public JSONArray modrinth;
         public JSONArray curseforge;
         public JSONObject optifine;
+
+        public String key() {
+            return id != null && !id.isEmpty() ? id : mc;
+        }
+
+        public String displayName() {
+            if ("1.20.1-forge".equals(key())) return "1.20.1 Forge";
+            return mc;
+        }
     }
 
     private OptimizedManifest(JSONObject root) {
@@ -45,9 +56,11 @@ public final class OptimizedManifest {
             JSONObject o = arr.getJSONObject(i);
             Pack p = new Pack();
             p.mc = o.getString("mc");
+            p.id = o.optString("id", p.mc);
             p.loader = o.getString("loader");
             p.loaderVersion = o.optString("loaderVersion", "");
             p.javaMajor = o.optInt("javaMajor", 17);
+            p.hosted = o.optJSONArray("hosted");
             p.modrinth = o.optJSONArray("modrinth");
             p.curseforge = o.optJSONArray("curseforge");
             p.optifine = o.optJSONObject("optifine");
