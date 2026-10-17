@@ -212,7 +212,10 @@ public class MinecraftDownloader {
     private void ensureJarFileCopy() throws IOException {
         if(mSourceJarFile == null) return;
         if(mSourceJarFile.equals(mTargetJarFile)) return;
-        if(mTargetJarFile.exists()) return;
+        if(mTargetJarFile.isFile()
+                && mTargetJarFile.length() == mSourceJarFile.length()
+                && DownloadUtils.isValidZipOrJar(mTargetJarFile)) return;
+        if(mTargetJarFile.exists()) mTargetJarFile.delete();
         FileUtils.ensureParentDirectory(mTargetJarFile);
         Log.i("NewMCDownloader", "Copying " + mSourceJarFile.getName() + " to "+mTargetJarFile.getAbsolutePath());
         org.apache.commons.io.FileUtils.copyFile(mSourceJarFile, mTargetJarFile, false);
@@ -295,8 +298,12 @@ public class MinecraftDownloader {
             throw new IOException("Unable to read Version JSON for version " + versionName);
         }
 
-        if(activity != null && !NewJREUtil.installNewJreIfNeeded(activity, verInfo)){
-            throw new RuntimeException(activity.getString(R.string.exception_failed_to_unpack_jre17));
+        // Child modloader JSONs (Fabric, Forge, Quilt, NeoForge) often omit javaVersion and inherit it
+        // from their parent vanilla JSON. Only run JRE selection once we have javaVersion or reached the root version.
+        if(activity != null && (!Tools.isValidString(verInfo.inheritsFrom) || verInfo.javaVersion != null)) {
+            if(!NewJREUtil.installNewJreIfNeeded(activity, verInfo)){
+                throw new RuntimeException(activity.getString(R.string.exception_failed_to_unpack_jre17));
+            }
         }
 
         JAssets assets = downloadAssetsIndex(verInfo);
@@ -554,29 +561,39 @@ public class MinecraftDownloader {
             }
         }
 
-        private void runCatching() throws Exception {
-            if (!LauncherPreferences.PREF_CHECK_LIBRARY_SHA && mTargetPath.isFile() && mTargetPath.length() > 0) {
-                finishWithoutDownloading();
-                return;
+        private boolean isExistingTargetValid() {
+            if (!mTargetPath.isFile() || mTargetPath.length() <= 0) return false;
+            if (mDownloadSize > 0 && mTargetPath.length() != mDownloadSize) {
+                Log.w("MinecraftDownloader", "Size mismatch (" + mTargetPath.length() + " != " + mDownloadSize + "), re-downloading: " + mTargetPath.getAbsolutePath());
+                return false;
             }
-            if(mDownloadClass == DownloadMirror.DOWNLOAD_CLASS_LIBRARIES && !Tools.isValidString(mTargetSha1)) {
+            if (DownloadUtils.isZipOrJarExtension(mTargetPath) && !DownloadUtils.isValidZipOrJar(mTargetPath)) {
+                Log.w("MinecraftDownloader", "Corrupt ZIP/JAR detected on disk, re-downloading: " + mTargetPath.getAbsolutePath());
+                return false;
+            }
+            if (LauncherPreferences.PREF_CHECK_LIBRARY_SHA && Tools.isValidString(mTargetSha1)) {
+                return Tools.compareSHA1(mTargetPath, mTargetSha1);
+            }
+            return true;
+        }
+
+        private void runCatching() throws Exception {
+            if(mDownloadClass == DownloadMirror.DOWNLOAD_CLASS_LIBRARIES
+                    && LauncherPreferences.PREF_CHECK_LIBRARY_SHA
+                    && !Tools.isValidString(mTargetSha1)) {
                 // If we're downloading a library, try to get sha1 since it might be available as a file
                 tryGetLibrarySha1();
             }
-            if(Tools.isValidString(mTargetSha1)) {
-                verifyFileSha1();
-            }else {
+            if(!LauncherPreferences.PREF_CHECK_LIBRARY_SHA || !Tools.isValidString(mTargetSha1)) {
                 mTargetSha1 = null; // Nullify SHA1 as DownloadUtils.ensureSha1 only checks for null,
                                     // not for string validity
-                if(mTargetPath.exists() && mTargetPath.length() > 0) finishWithoutDownloading();
-                else downloadFile();
             }
-        }
-        
-        private void verifyFileSha1() throws Exception {
-            if (mTargetPath.isFile() && mTargetPath.length() > 0) {
+            if(isExistingTargetValid()) {
                 finishWithoutDownloading();
                 return;
+            }
+            if(mTargetPath.exists()) {
+                mTargetPath.delete();
             }
             downloadFile();
         }

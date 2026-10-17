@@ -38,8 +38,21 @@ public final class MobileCompat {
         File[] jars = mods.listFiles();
         if (jars != null) {
             for (File f : jars) {
+                if (!f.isFile()) continue;
                 String name = f.getName().toLowerCase();
+                if (name.endsWith(".part")) {
+                    //noinspection ResultOfMethodCallIgnored
+                    f.delete();
+                    continue;
+                }
                 if (!name.endsWith(".jar")) continue;
+                if (!net.kdt.pojavlaunch.utils.DownloadUtils.isValidZipOrJar(f)) {
+                    Log.w(TAG, "Eliminando mod JAR corrupto/truncado: " + f.getName());
+                    //noinspection ResultOfMethodCallIgnored
+                    f.delete();
+                    n++;
+                    continue;
+                }
                 if (!isUnsafe(name)) continue;
                 File dest = new File(mods, f.getName() + ".disabled");
                 if (dest.exists()) //noinspection ResultOfMethodCallIgnored
@@ -47,6 +60,23 @@ public final class MobileCompat {
                 if (f.renameTo(dest)) {
                     n++;
                     Log.i(TAG, "Desactivado en Android: " + f.getName());
+                }
+            }
+        }
+        for (String sub : new String[]{"resourcepacks", "shaderpacks"}) {
+            File dir = new File(gameDir, sub);
+            File[] archives = dir.listFiles();
+            if (archives == null) continue;
+            for (File a : archives) {
+                if (!a.isFile()) continue;
+                String aname = a.getName().toLowerCase();
+                if (aname.endsWith(".part")) {
+                    //noinspection ResultOfMethodCallIgnored
+                    a.delete();
+                } else if (aname.endsWith(".zip") && !net.kdt.pojavlaunch.utils.DownloadUtils.isValidZipOrJar(a)) {
+                    Log.w(TAG, "Eliminando archivo ZIP corrupto en " + sub + ": " + a.getName());
+                    //noinspection ResultOfMethodCallIgnored
+                    a.delete();
                 }
             }
         }

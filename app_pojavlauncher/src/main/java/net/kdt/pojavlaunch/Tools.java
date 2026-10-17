@@ -755,7 +755,19 @@ public final class Tools {
 
     public static String[] getMinecraftJVMArgs(String versionName, File gameDir) {
         JMinecraftVersionList.Version versionInfo = Tools.getVersionInfo(versionName, true);
-        if (versionInfo.arguments == null || versionInfo.arguments.jvm == null)
+        List<Object> rawJvmArgs = new ArrayList<>();
+        if (versionInfo.inheritsFrom != null && !versionInfo.inheritsFrom.equals(versionInfo.id)) {
+            try {
+                JMinecraftVersionList.Version parentVer = Tools.getVersionInfo(versionInfo.inheritsFrom, true);
+                if (parentVer != null && parentVer.arguments != null && parentVer.arguments.jvm != null) {
+                    rawJvmArgs.addAll(Arrays.asList(parentVer.arguments.jvm));
+                }
+            } catch (Exception ignored) {}
+        }
+        if (versionInfo.arguments != null && versionInfo.arguments.jvm != null) {
+            rawJvmArgs.addAll(Arrays.asList(versionInfo.arguments.jvm));
+        }
+        if (rawJvmArgs.isEmpty())
             return new String[0];
 
         Map<String, String> varArgMap = new ArrayMap<>();
@@ -765,7 +777,7 @@ public final class Tools {
         varArgMap.put("natives_directory", Tools.DIR_CACHE.getAbsolutePath());
 
         List<String> minecraftArgs = new ArrayList<>();
-        for (Object arg : versionInfo.arguments.jvm) {
+        for (Object arg : rawJvmArgs) {
             if (arg instanceof String) {
                 // These are defined later on
                 if (((String) arg).contains("java.library.path")) {

@@ -17,3 +17,6 @@ app_pojavlauncher/.cxx/
 
 # APKs compilados en la raiz del repo
 /Paraguacraft-mobile-*.apk
+
+out/
+*.apk

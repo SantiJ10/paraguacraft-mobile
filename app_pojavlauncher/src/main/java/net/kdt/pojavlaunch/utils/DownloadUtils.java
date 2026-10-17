@@ -67,13 +67,38 @@ public class DownloadUtils {
         downloadToFile(urlInput, outputFile, buffer, monitor);
     }
 
+    public static boolean isZipOrJarExtension(@Nullable File file) {
+        if (file == null) return false;
+        String name = file.getName().toLowerCase(java.util.Locale.ROOT);
+        return name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".aar") || name.endsWith(".mrpack");
+    }
+
+    public static boolean isValidZipOrJar(@Nullable File file) {
+        if (file == null || !file.isFile() || file.length() < 22) return false;
+        try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(file)) {
+            return zip.size() >= 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     /**
-     * Download with HTTP Range resume so a dropped slow transfer does not restart from 0.
+     * Download with HTTP Range resume to a sibling .part file and atomic rename on completion
+     * so an interrupted transfer never leaves a truncated file at outputFile.
      */
     private static void downloadToFile(String urlInput, File outputFile, @Nullable byte[] buffer,
                                        @Nullable Tools.DownloaderFeedback monitor) throws IOException {
+        downloadToFileInternal(urlInput, outputFile, buffer, monitor, true);
+    }
+
+    private static void downloadToFileInternal(String urlInput, File outputFile, @Nullable byte[] buffer,
+                                               @Nullable Tools.DownloaderFeedback monitor, boolean allowRange) throws IOException {
         FileUtils.ensureParentDirectory(outputFile);
-        long existing = outputFile.exists() ? outputFile.length() : 0;
+        File partFile = new File(outputFile.getParentFile(), outputFile.getName() + ".part");
+        long existing = (allowRange && partFile.isFile()) ? partFile.length() : 0;
+        if (!allowRange && partFile.exists()) {
+            partFile.delete();
+        }
         HttpURLConnection conn = (HttpURLConnection) new URL(urlInput).openConnection();
         conn.setRequestProperty("User-Agent", USER_AGENT);
         conn.setConnectTimeout(CONNECT_TIME_OUT);
@@ -87,11 +112,13 @@ public class DownloadUtils {
             conn.connect();
             int code = conn.getResponseCode();
             if (code == 416) {
-                if (monitor != null) {
-                    int size = (int) Math.min(existing, Integer.MAX_VALUE);
-                    monitor.updateProgress(size, size);
+                conn.disconnect();
+                partFile.delete();
+                if (allowRange) {
+                    downloadToFileInternal(urlInput, outputFile, buffer, monitor, false);
+                    return;
                 }
-                return;
+                throw new IOException("Server returned HTTP 416 for " + urlInput);
             }
             boolean append = existing > 0 && code == HttpURLConnection.HTTP_PARTIAL;
             if (code != HttpURLConnection.HTTP_OK && code != HttpURLConnection.HTTP_PARTIAL) {
@@ -102,7 +129,7 @@ public class DownloadUtils {
             int total = bodyLength < 0 ? -1 : (append ? (int) Math.min(existing + bodyLength, Integer.MAX_VALUE) : bodyLength);
             readStr = conn.getInputStream();
             if (buffer == null) buffer = new byte[65536];
-            try (FileOutputStream fos = new FileOutputStream(outputFile, append)) {
+            try (FileOutputStream fos = new FileOutputStream(partFile, append)) {
                 int current;
                 long overall = existing;
                 while ((current = readStr.read(buffer)) != -1) {
@@ -113,10 +140,25 @@ public class DownloadUtils {
                     }
                 }
             }
+            if (isZipOrJarExtension(outputFile) && !isValidZipOrJar(partFile)) {
+                partFile.delete();
+                if (allowRange && existing > 0) {
+                    conn.disconnect();
+                    downloadToFileInternal(urlInput, outputFile, buffer, monitor, false);
+                    return;
+                }
+                throw new IOException("Corrupt or truncated ZIP/JAR downloaded from " + urlInput);
+            }
+            if (outputFile.exists() && !outputFile.delete()) {
+                org.apache.commons.io.FileUtils.deleteQuietly(outputFile);
+            }
+            if (!partFile.renameTo(outputFile)) {
+                org.apache.commons.io.FileUtils.copyFile(partFile, outputFile);
+                partFile.delete();
+            }
         } catch (IOException e) {
-            if (outputFile.length() < 1) {
-                Log.i("DownloadUtils", "Cleaning up failed download: " + outputFile.getAbsolutePath());
-                outputFile.delete();
+            if (partFile.length() < 1) {
+                partFile.delete();
             }
             throw new IOException("Unable to download from " + urlInput, e);
         } finally {
@@ -173,16 +215,19 @@ public class DownloadUtils {
         }
     }
 
-    private static boolean verifyFile(File file, String sha1) {
-        return file.exists() && Tools.compareSHA1(file, sha1);
+    private static boolean verifyFile(File file, @Nullable String sha1) {
+        if (file == null || !file.isFile() || file.length() <= 0) return false;
+        if (isZipOrJarExtension(file) && !isValidZipOrJar(file)) return false;
+        return sha1 == null || Tools.compareSHA1(file, sha1);
     }
 
     public static <T> T ensureSha1(File outputFile, @Nullable String sha1, Callable<T> downloadFunction) throws IOException {
         // Skip if needed
         if(sha1 == null) {
-            // If the file exists and we don't know it's SHA1, don't try to redownload it.
-            if(outputFile.exists()) return null;
-            else return downloadFile(downloadFunction);
+            // Verify non-empty and valid ZIP/JAR header even when SHA1 is unknown.
+            if(verifyFile(outputFile, null)) return null;
+            if(outputFile.exists()) outputFile.delete();
+            return downloadFile(downloadFunction);
         }
 
         int attempts = 0;
@@ -190,7 +235,7 @@ public class DownloadUtils {
         T result = null;
         while (attempts < 5 && !fileOkay){
             attempts++;
-            if (attempts > 1 && outputFile.exists()) outputFile.delete();
+            if (outputFile.exists()) outputFile.delete();
             downloadFile(downloadFunction);
             fileOkay = verifyFile(outputFile, sha1);
         }

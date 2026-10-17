@@ -90,10 +90,20 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
      * JavaGUILauncherActivity finishes in seconds instead of ~5 minutes.
      */
     private void prewarmForgeInstaller(File installerJar) {
+        prewarmInstallerJar(installerJar, mGameVersion, mFullVersion != null ? mFullVersion : "Forge", this);
+    }
+
+    /**
+     * Pre-extracts bundled maven/ artifacts, cleans any corrupt processor output JARs, and downloads
+     * all Forge/NeoForge installer libraries + vanilla client JAR in parallel on 8 threads so the
+     * single-threaded Swing/CLI installer inside JavaGUILauncherActivity finishes in seconds.
+     */
+    public static void prewarmInstallerJar(File installerJar, String gameVersion, String label,
+                                           Tools.DownloaderFeedback feedback) {
         if (installerJar == null || !installerJar.isFile()) return;
         List<LibEntry> toDownload = new ArrayList<>();
         Set<String> seenPaths = new HashSet<>();
-        String detectedMc = mGameVersion;
+        String detectedMc = gameVersion;
 
         try (ZipFile zip = new ZipFile(installerJar)) {
             Enumeration<? extends ZipEntry> entries = zip.entries();
@@ -105,13 +115,21 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
                 if (name.startsWith("maven/") && name.length() > "maven/".length()) {
                     String rel = name.substring("maven/".length());
                     File out = new File(Tools.DIR_HOME_LIBRARY, rel);
-                    if (!out.isFile() || out.length() == 0) {
+                    boolean valid = out.isFile() && out.length() > 0
+                            && (!DownloadUtils.isZipOrJarExtension(out) || DownloadUtils.isValidZipOrJar(out));
+                    if (!valid) {
+                        if (out.exists()) out.delete();
                         FileUtils.ensureParentDirectory(out);
+                        File part = new File(out.getParentFile(), out.getName() + ".part");
                         try (InputStream in = zip.getInputStream(ze);
-                             FileOutputStream fos = new FileOutputStream(out)) {
+                             FileOutputStream fos = new FileOutputStream(part)) {
                             int n;
                             while ((n = in.read(copyBuf)) > 0) fos.write(copyBuf, 0, n);
-                        } catch (Exception ignored) {}
+                        }
+                        if (!part.renameTo(out)) {
+                            org.apache.commons.io.FileUtils.copyFile(part, out);
+                            part.delete();
+                        }
                     }
                 }
             }
@@ -123,7 +141,7 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
         }
 
         if (detectedMc != null && !detectedMc.isEmpty()) {
-            ensureVanillaClientPrewarmed(detectedMc);
+            ensureVanillaClientPrewarmed(detectedMc, feedback);
         }
 
         if (toDownload.isEmpty()) return;
@@ -149,7 +167,7 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
                             ProgressLayout.INSTALL_MODPACK,
                             pct,
                             R.string.forge_dl_progress,
-                            (mFullVersion != null ? mFullVersion : "Forge") + " (" + c + "/" + total + ")"
+                            (label != null ? label : "Forge") + " (" + c + "/" + total + ")"
                     );
                 }
             }));
@@ -160,8 +178,8 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
         }
     }
 
-    private String collectLibsFromZipJson(ZipFile zip, String entryName, List<LibEntry> out,
-                                          Set<String> seenPaths, String currentMc) {
+    private static String collectLibsFromZipJson(ZipFile zip, String entryName, List<LibEntry> out,
+                                                 Set<String> seenPaths, String currentMc) {
         ZipEntry entry = zip.getEntry(entryName);
         if (entry == null) return currentMc;
         try (InputStream in = zip.getInputStream(entry)) {
@@ -172,6 +190,29 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
                     currentMc = root.get("minecraft").getAsString();
                 } else if (root.has("inheritsFrom") && root.get("inheritsFrom").isJsonPrimitive()) {
                     currentMc = root.get("inheritsFrom").getAsString();
+                }
+            }
+            if (root.has("data") && root.get("data").isJsonObject()) {
+                JsonObject data = root.getAsJsonObject("data");
+                for (String key : data.keySet()) {
+                    JsonElement valEl = data.get(key);
+                    if (!valEl.isJsonObject()) continue;
+                    JsonObject valObj = valEl.getAsJsonObject();
+                    if (valObj.has("client") && valObj.get("client").isJsonPrimitive()) {
+                        String clientVal = valObj.get("client").getAsString();
+                        if (clientVal.startsWith("[") && clientVal.endsWith("]") && clientVal.length() > 2) {
+                            String coord = clientVal.substring(1, clientVal.length() - 1);
+                            String relPath = mavenCoordinateToPath(coord);
+                            if (relPath != null) {
+                                File procTarget = new File(Tools.DIR_HOME_LIBRARY, relPath);
+                                if (procTarget.exists() && DownloadUtils.isZipOrJarExtension(procTarget)
+                                        && !DownloadUtils.isValidZipOrJar(procTarget)) {
+                                    Log.w("ForgePrewarm", "Deleting corrupt processor output: " + procTarget.getAbsolutePath());
+                                    procTarget.delete();
+                                }
+                            }
+                        }
+                    }
                 }
             }
             collectLibsFromArray(root.getAsJsonArray("libraries"), out, seenPaths);
@@ -185,7 +226,7 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
         return currentMc;
     }
 
-    private void collectLibsFromArray(JsonArray libs, List<LibEntry> out, Set<String> seenPaths) {
+    private static void collectLibsFromArray(JsonArray libs, List<LibEntry> out, Set<String> seenPaths) {
         if (libs == null) return;
         for (JsonElement el : libs) {
             if (!el.isJsonObject()) continue;
@@ -206,21 +247,30 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
                 path = mavenCoordinateToPath(obj.get("name").getAsString());
             }
             if ((url == null || url.isEmpty()) && path != null) {
+                String defaultMaven = path.startsWith("net/neoforged/")
+                        ? "https://maven.neoforged.net/releases/"
+                        : "https://maven.minecraftforge.net/";
                 String base = obj.has("url") && !obj.get("url").getAsString().isEmpty()
                         ? obj.get("url").getAsString()
-                        : "https://maven.minecraftforge.net/";
+                        : defaultMaven;
                 if (!base.endsWith("/")) base += "/";
                 url = base + path;
             }
             if (path == null || url == null || url.isEmpty()) continue;
             if (!seenPaths.add(path)) continue;
             File target = new File(Tools.DIR_HOME_LIBRARY, path);
-            if (target.isFile() && target.length() > 0) continue;
+            if (target.isFile() && target.length() > 0) {
+                if (!DownloadUtils.isZipOrJarExtension(target) || DownloadUtils.isValidZipOrJar(target)) {
+                    continue;
+                }
+                Log.w("ForgePrewarm", "Deleting corrupt library JAR before prewarm: " + target.getAbsolutePath());
+                target.delete();
+            }
             out.add(new LibEntry(target, url, sha1));
         }
     }
 
-    private static String mavenCoordinateToPath(String name) {
+    public static String mavenCoordinateToPath(String name) {
         if (name == null || name.isEmpty()) return null;
         String ext = "jar";
         int at = name.indexOf('@');
@@ -237,7 +287,7 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
         return group + "/" + artifact + "/" + version + "/" + artifact + "-" + version + classifier + "." + ext;
     }
 
-    private void ensureVanillaClientPrewarmed(String mcVersion) {
+    private static void ensureVanillaClientPrewarmed(String mcVersion, Tools.DownloaderFeedback feedback) {
         try {
             File verDir = new File(Tools.DIR_HOME_VERSION, mcVersion);
             File verJson = new File(verDir, mcVersion + ".json");
@@ -247,7 +297,8 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
                 FileUtils.ensureParentDirectory(verJson);
                 DownloadUtils.downloadFile(listed.url, verJson);
             }
-            if ((!verJar.isFile() || verJar.length() == 0) && verJson.isFile()) {
+            if ((!verJar.isFile() || !DownloadUtils.isValidZipOrJar(verJar)) && verJson.isFile()) {
+                if (verJar.exists()) verJar.delete();
                 JMinecraftVersionList.Version parsed = Tools.GLOBAL_GSON.fromJson(
                         Tools.read(verJson.getAbsolutePath()), JMinecraftVersionList.Version.class);
                 if (parsed != null && parsed.downloads != null) {
@@ -255,7 +306,7 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
                     if (client != null && client.url != null) {
                         FileUtils.ensureParentDirectory(verJar);
                         DownloadUtils.ensureSha1(verJar, client.sha1, () -> {
-                            DownloadUtils.downloadFileMonitored(client.url, verJar, new byte[65536], this);
+                            DownloadUtils.downloadFileMonitored(client.url, verJar, new byte[65536], feedback);
                             return null;
                         });
                     }

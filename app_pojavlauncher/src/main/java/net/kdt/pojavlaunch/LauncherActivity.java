@@ -280,6 +280,35 @@ public class LauncherActivity extends BaseActivity {
         }
 
         String normalizedVersionId = AsyncMinecraftDownloader.normalizeVersionId(prof.lastVersionId);
+        if (normalizedVersionId != null) {
+            String lowerId = normalizedVersionId.toLowerCase(Locale.ROOT);
+            if (lowerId.startsWith("neoforge-")
+                    && !net.kdt.pojavlaunch.modloaders.ForgeUtils.verifyForgeInstallation(normalizedVersionId, false)) {
+                String loaderVer = normalizedVersionId.substring("neoforge-".length());
+                Toast.makeText(this, "Reparando instalación de NeoForge (" + loaderVer + ")…", Toast.LENGTH_LONG).show();
+                ModLoader loaderInfo = new ModLoader(ModLoader.MOD_LOADER_NEOFORGE, loaderVer, "");
+                PojavApplication.sExecutorService.execute(
+                        new net.kdt.pojavlaunch.modloaders.NeoForgeDownloadTask(
+                                new NotificationDownloadListener(this, loaderInfo), loaderVer)
+                );
+                return false;
+            } else if (lowerId.contains("forge")
+                    && !net.kdt.pojavlaunch.modloaders.ForgeUtils.verifyForgeInstallation(normalizedVersionId, false)) {
+                String fullForgeVer = net.kdt.pojavlaunch.modloaders.ForgeUtils.extractFullForgeVersion(normalizedVersionId);
+                if (fullForgeVer != null) {
+                    Toast.makeText(this, "Reparando instalación de Forge (" + fullForgeVer + ")…", Toast.LENGTH_LONG).show();
+                    String[] parts = fullForgeVer.split("-", 2);
+                    ModLoader loaderInfo = new ModLoader(ModLoader.MOD_LOADER_FORGE,
+                            parts.length > 1 ? parts[1] : fullForgeVer,
+                            parts[0]);
+                    PojavApplication.sExecutorService.execute(
+                            new net.kdt.pojavlaunch.modloaders.ForgeDownloadTask(
+                                    new NotificationDownloadListener(this, loaderInfo), fullForgeVer)
+                    );
+                    return false;
+                }
+            }
+        }
         JMinecraftVersionList.Version mcVersion = AsyncMinecraftDownloader.getListedVersion(normalizedVersionId);
 
         new MinecraftDownloader().start(

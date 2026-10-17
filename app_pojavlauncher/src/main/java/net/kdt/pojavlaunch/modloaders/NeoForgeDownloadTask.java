@@ -46,9 +46,10 @@ public class NeoForgeDownloadTask implements Runnable, Tools.DownloaderFeedback 
     private void downloadNeoForge() {
         ProgressKeeper.submitProgress(ProgressLayout.INSTALL_MODPACK, 0, R.string.forge_dl_progress, mLoaderVersion);
         try {
-            File destinationFile = new File(Tools.DIR_CACHE, "neoforge-installer.jar");
-            byte[] buffer = new byte[8192];
+            File destinationFile = new File(Tools.DIR_CACHE, "neoforge-" + mLoaderVersion + "-installer.jar");
+            byte[] buffer = new byte[65536];
             DownloadUtils.downloadFileMonitored(mDownloadUrl, destinationFile, buffer, this);
+            ForgeDownloadTask.prewarmInstallerJar(destinationFile, null, "NeoForge " + mLoaderVersion, this);
             mListener.onDownloadFinished(destinationFile);
         }catch (FileNotFoundException e) {
             mListener.onDataNotAvailable();

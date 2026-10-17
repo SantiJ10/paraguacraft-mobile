@@ -447,14 +447,18 @@ public final class OptimizedInstaller {
 
     public static String findForgeVersionId(OptimizedManifest.Pack pack) {
         String canonical = pack.mc + "-forge-" + pack.loaderVersion;
-        if (versionJsonExists(canonical)) return canonical;
+        if (versionJsonExists(canonical)
+                && net.kdt.pojavlaunch.modloaders.ForgeUtils.verifyForgeInstallation(canonical, true)) {
+            return canonical;
+        }
         File versions = new File(Tools.DIR_HOME_VERSION);
         File[] dirs = versions.listFiles();
         if (dirs == null) return null;
         for (File d : dirs) {
             String n = d.getName();
             if (n.toLowerCase().contains("forge") && n.contains(pack.mc)
-                    && n.contains(pack.loaderVersion) && versionJsonExists(n)) {
+                    && n.contains(pack.loaderVersion) && versionJsonExists(n)
+                    && net.kdt.pojavlaunch.modloaders.ForgeUtils.verifyForgeInstallation(n, true)) {
                 return n;
             }
         }
@@ -493,15 +497,25 @@ public final class OptimizedInstaller {
 
     private static void installHostedAssetMod(Context ctx, String filename, File modsDir, Progress progress) {
         File dest = new File(modsDir, filename);
-        if (dest.isFile() && dest.length() > 1024) return;
+        if (dest.isFile() && DownloadUtils.isValidZipOrJar(dest)) return;
+        if (dest.exists()) dest.delete();
         progress.onMessage("Mod " + filename);
+        File part = new File(modsDir, filename + ".part");
         try (java.io.InputStream in = ctx.getAssets().open("paraguacraft/optimized-mods/" + filename);
-             java.io.FileOutputStream out = new java.io.FileOutputStream(dest)) {
+             java.io.FileOutputStream out = new java.io.FileOutputStream(part)) {
             byte[] buf = new byte[16384];
             int n;
             while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
         } catch (Exception e) {
+            part.delete();
             Log.w(TAG, "Hosted mod skip " + filename, e);
+            return;
+        }
+        if (!part.renameTo(dest)) {
+            try {
+                org.apache.commons.io.FileUtils.copyFile(part, dest);
+            } catch (Exception ignored) {}
+            part.delete();
         }
     }
 
@@ -512,14 +526,15 @@ public final class OptimizedInstaller {
         String patch = of.optString("patch", "");
         String name = "OptiFine_" + pack.mc + "_" + type + "_" + patch + ".jar";
         File dest = new File(mods, name);
-        if (dest.isFile() && dest.length() > 1024) {
+        if (dest.isFile() && DownloadUtils.isValidZipOrJar(dest)) {
             progress.onMessage("OptiFine ya está");
             return;
         }
+        if (dest.exists()) dest.delete();
         progress.onMessage("OptiFine " + type + "_" + patch);
         String url = of.optString("bmcl", "https://bmclapi2.bangbang93.com/optifine/" + pack.mc + "/" + type + "/" + patch);
         DownloadUtils.downloadFile(url, dest);
-        if (dest.length() < 4) throw new IOException("OptiFine vacío");
+        if (!DownloadUtils.isValidZipOrJar(dest)) throw new IOException("OptiFine vacío o corrupto");
     }
 
     private static void downloadCurseForge(JSONObject pin, File modsDir) throws Exception {
@@ -527,7 +542,8 @@ public final class OptimizedInstaller {
         int fileId = pin.getInt("fileId");
         String slug = pin.optString("slug", "mod");
         File dest = new File(modsDir, slug + "-" + fileId + ".jar");
-        if (dest.isFile() && dest.length() > 0) return;
+        if (dest.isFile() && DownloadUtils.isValidZipOrJar(dest)) return;
+        if (dest.exists()) dest.delete();
         String url = "https://www.curseforge.com/api/v1/mods/" + projectId + "/files/" + fileId + "/download";
         DownloadUtils.downloadFile(url, dest);
     }
@@ -728,7 +744,8 @@ public final class OptimizedInstaller {
         String url = file.getString("url");
         String name = file.getString("filename");
         File dest = new File(destDir, name);
-        if (dest.isFile() && dest.length() > 1024) return name;
+        if (dest.isFile() && (!DownloadUtils.isZipOrJarExtension(dest) ? dest.length() > 1024 : DownloadUtils.isValidZipOrJar(dest))) return name;
+        if (dest.exists()) dest.delete();
         DownloadUtils.downloadFile(url, dest);
         return dest.isFile() ? name : null;
     }
@@ -817,14 +834,16 @@ public final class OptimizedInstaller {
             String h = hashes.optString("sha1", "");
             if (!h.isEmpty()) sha1 = h;
         }
-        if (dest.isFile() && dest.length() > 0 && sha1 != null && Tools.compareSHA1(dest, sha1)) {
+        boolean validZip = !DownloadUtils.isZipOrJarExtension(dest) || DownloadUtils.isValidZipOrJar(dest);
+        if (dest.isFile() && dest.length() > 0 && validZip && sha1 != null && Tools.compareSHA1(dest, sha1)) {
             Log.i(TAG, "Ya está: " + name);
             return;
         }
-        if (dest.isFile() && dest.length() > 0 && sha1 == null) {
+        if (dest.isFile() && dest.length() > 0 && validZip && sha1 == null) {
             Log.i(TAG, "Ya está (sin hash): " + name);
             return;
         }
+        if (dest.exists()) dest.delete();
         DownloadUtils.ensureSha1(dest, sha1, () -> {
             DownloadUtils.downloadFile(url, dest);
             return null;
