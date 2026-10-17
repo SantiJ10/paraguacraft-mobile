@@ -61,11 +61,15 @@ public class Agent implements AWTEventListener {
         AbstractButton okButton = null;
         for(Component component : components) {
             if(component instanceof AbstractButton) {
-                AbstractButton abstractButton = (AbstractButton) component;
-                abstractButton = optiFineInstallation ?
-                        handleOptiFineButton(abstractButton) :
-                        handleForgeButton(abstractButton);
-                if(abstractButton != null) okButton = abstractButton;
+                try {
+                    AbstractButton abstractButton = (AbstractButton) component;
+                    abstractButton = optiFineInstallation ?
+                            handleOptiFineButton(abstractButton) :
+                            handleForgeButton(abstractButton);
+                    if(abstractButton != null) okButton = abstractButton;
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
             }
         }
         if(okButton == null) {
@@ -80,17 +84,24 @@ public class Agent implements AWTEventListener {
 
 
     public AbstractButton handleForgeButton(AbstractButton abstractButton) {
-        switch(abstractButton.getText()) {
+        if (abstractButton == null) return null;
+        String text = abstractButton.getText();
+        if (text == null) return null;
+        switch(text.trim()) {
             case "OK":
-                return  abstractButton; // return the button, so we can press it after processing other stuff
+            case "Proceed":
+                return abstractButton; // return the button, so we can press it after processing other stuff
             case "Install client":
                 abstractButton.doClick(); // It should be the default, but let's make sure
+                break;
         }
         return null;
     }
 
     public AbstractButton handleOptiFineButton(AbstractButton abstractButton) {
-        if ("Install".equals(abstractButton.getText())) {
+        if (abstractButton == null) return null;
+        String text = abstractButton.getText();
+        if (text != null && "Install".equalsIgnoreCase(text.trim())) {
             return abstractButton;
         }
         return null;

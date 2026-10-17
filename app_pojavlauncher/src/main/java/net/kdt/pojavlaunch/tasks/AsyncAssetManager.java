@@ -144,7 +144,7 @@ public class AsyncAssetManager {
         }
     }
 
-    private static void unpackComponent(Context ctx, String component, boolean privateDirectory) throws IOException {
+    public static synchronized void unpackComponent(Context ctx, String component, boolean privateDirectory) throws IOException {
         AssetManager am = ctx.getAssets();
         String rootDir = privateDirectory ? Tools.DIR_DATA : Tools.DIR_GAME_HOME;
 

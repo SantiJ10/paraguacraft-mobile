@@ -405,9 +405,17 @@ public class JREUtils {
 
         // Some phones are not using the right number of cores, fix that
         userArgs.add("-XX:ActiveProcessorCount=" + java.lang.Runtime.getRuntime().availableProcessors());
+        try {
+            net.kdt.pojavlaunch.tasks.AsyncAssetManager.unpackComponent(activity, "MioLibPatcher", true);
+            net.kdt.pojavlaunch.tasks.AsyncAssetManager.unpackComponent(activity, "forge_installer", true);
+        } catch (Throwable ignored) {}
+
         // Adds/changes methods for compatibility
         userArgs.add("-javaagent:"+new File(Tools.DIR_DATA,"MioLibPatcher/MioLibPatcher.jar").getAbsolutePath());
         userArgs.add("-Dmiolibpatcher.alc10=true");
+        if (gameDirectory == null) {
+            userArgs.add("-Dmiolibpatcher.asmBackport=false");
+        }
 
         userArgs.addAll(JVMArgs);
         activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg,LauncherPreferences.PREF_RAM_ALLOCATION), Toast.LENGTH_SHORT).show());
