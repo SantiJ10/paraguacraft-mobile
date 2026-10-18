@@ -92,105 +92,78 @@ public class NewJREUtil {
         return majorVersion <= 8;
     }
 
+    public static int mapRequiredJavaMajor(int targetJavaVersion) {
+        if (targetJavaVersion <= 8) return 8;
+        if (targetJavaVersion <= 17) return 17;
+        if (targetJavaVersion <= 21) return 21;
+        return 25;
+    }
+
+    public static boolean isRuntimeCompatibleForGame(int runtimeMajor, int gameRequiredMajor) {
+        if (runtimeMajor <= 0) return false;
+        if (gameRequiredMajor <= 8) return runtimeMajor == 8;
+        if (gameRequiredMajor <= 17) return runtimeMajor == 17;
+        if (gameRequiredMajor <= 21) return runtimeMajor == 21;
+        return runtimeMajor >= gameRequiredMajor;
+    }
+
+    /**
+     * Ensures that a compatible External JRE (8, 17, 21, or 25) is installed on disk, downloading it if needed.
+     * Safe to call from any background thread.
+     */
+    public static synchronized String ensureRuntimeInstalled(Context context, int targetJavaVersion) {
+        int canonical = mapRequiredJavaMajor(targetJavaVersion);
+        String exact = MultiRTUtils.getExactJreName(canonical);
+        if (exact != null) {
+            return exact;
+        }
+        tryDownloadRuntime(context, canonical);
+        return MultiRTUtils.getExactJreName(canonical);
+    }
+
     /** @return true if everything is good, false otherwise.  */
     public static boolean installNewJreIfNeeded(Activity activity, JMinecraftVersionList.Version versionInfo) {
         int gameRequiredVersion = requiredJavaMajor(versionInfo);
+        int canonicalMajor = mapRequiredJavaMajor(gameRequiredVersion);
 
         LauncherProfiles.load();
         AssetManager assetManager = activity.getAssets();
         MinecraftProfile minecraftProfile = LauncherProfiles.getCurrentProfile();
 
-        // LaunchWrapper cannot run on Java 21. Never keep External-21 for 1.8.9 / 1.12.2.
-        if (needsJava8(gameRequiredVersion)) {
-            if (MultiRTUtils.getExactJreName(8) == null) {
-                try {
-                    tryDownloadRuntime(activity, 8);
-                } catch (Exception e) {
-                    Log.e("NewJREAuto", "Java 8 download failed", e);
-                    showRuntimeFail(activity, versionInfo);
-                    return false;
-                }
-            }
-            String java8 = MultiRTUtils.getExactJreName(8);
-            if (java8 == null) {
-                showRuntimeFail(activity, versionInfo);
-                return false;
-            }
-            if (minecraftProfile != null) {
-                minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + java8;
-                LauncherProfiles.write();
-            }
-            return true;
-        }
-
         String profileRuntime = Tools.getSelectedRuntime(minecraftProfile);
         Runtime runtime = MultiRTUtils.read(profileRuntime);
-        // Partly trust the user with his own selection, if the game can even try to run in this case
-        if (runtime.javaVersion >= gameRequiredVersion) {
-            // Check whether the selection is an internal runtime
+        if (runtime != null && isRuntimeCompatibleForGame(runtime.javaVersion, gameRequiredVersion)) {
             InternalRuntime internalRuntime = getInternalRuntime(runtime);
-            // If it is, check if updates are available from the APK file
             if (internalRuntime != null) {
-                // Not calling showRuntimeFail on failure here because we did, technically, find the compatible runtime
-                return checkInternalRuntime(assetManager, internalRuntime);
+                if (checkInternalRuntime(assetManager, internalRuntime)) {
+                    return true;
+                }
+            } else {
+                return true;
             }
-            return true;
         }
 
-        // If the runtime version selected by the user is not appropriate for this version (which means the game won't run at all)
-        // automatically pick from either an already installed runtime, or a runtime packed with the launcher
-        MathUtils.RankedValue<?> nearestInstalledRuntime = getNearestInstalledRuntime(gameRequiredVersion);
-        MathUtils.RankedValue<?> nearestInternalRuntime = getNearestInternalRuntime(gameRequiredVersion);
-
-        MathUtils.RankedValue<?> selectedRankedRuntime = MathUtils.objectMin(
-                nearestInternalRuntime, nearestInstalledRuntime, (value)->value.rank
-        );
-
-        // Check if the selected runtime actually exists in the APK, else download it
-        // If it isn't InternalRuntime then it wasn't in the apk in the first place!
-        if (selectedRankedRuntime.value instanceof InternalRuntime)
-            if (!checkInternalRuntime(assetManager, (InternalRuntime) selectedRankedRuntime.value)) {
-                if (nearestInstalledRuntime == null) // If this was non-null then it would be a valid runtime and we can leave it be
-                    tryDownloadRuntime(activity, gameRequiredVersion);
-                // This means the internal runtime didn't extract so let's use installed instead
-                // This also refreshes it so after the runtime download, it can find the new runtime
-                selectedRankedRuntime = getNearestInstalledRuntime(gameRequiredVersion);
+        String chosenJre = MultiRTUtils.getExactJreName(canonicalMajor);
+        if (chosenJre == null) {
+            try {
+                chosenJre = ensureRuntimeInstalled(activity, canonicalMajor);
+            } catch (Exception e) {
+                Log.e("NewJREAuto", "Java " + canonicalMajor + " download failed", e);
+                if (canonicalMajor == 17) {
+                    chosenJre = MultiRTUtils.getExactJreName(21);
+                }
             }
+        }
 
-
-        // No possible selections
-        if(selectedRankedRuntime == null) {
+        if (chosenJre == null) {
             showRuntimeFail(activity, versionInfo);
             return false;
         }
 
-        Object selected = selectedRankedRuntime.value;
-        String appropriateRuntime;
-        InternalRuntime internalRuntime;
-
-        // Perform checks on the picked runtime
-        if(selected instanceof Runtime) {
-            // If it's an already installed runtime, save its name and check if
-            // it's actually an internal one (just in case)
-            Runtime selectedRuntime = (Runtime) selected;
-            appropriateRuntime = selectedRuntime.name;
-            internalRuntime = getInternalRuntime(selectedRuntime);
-        } else if (selected instanceof InternalRuntime) {
-            // If it's an internal runtime, set it's name as the appropriate one.
-            internalRuntime = (InternalRuntime) selected;
-            appropriateRuntime = internalRuntime.name;
-        } else {
-            throw new RuntimeException("Unexpected type of selected: "+selected.getClass().getName());
+        if (minecraftProfile != null) {
+            minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + chosenJre;
+            LauncherProfiles.write();
         }
-
-        // If it turns out the selected runtime is actually an internal one, attempt automatic installation or update
-        if(internalRuntime != null && !checkInternalRuntime(assetManager, internalRuntime)) {
-            // Not calling showRuntimeFail here because we did, technically, find the compatible runtime
-            return false;
-        }
-
-        minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + appropriateRuntime;
-        LauncherProfiles.write();
         return true;
     }
 

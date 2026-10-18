@@ -101,6 +101,10 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
     public static void prewarmInstallerJar(File installerJar, String gameVersion, String label,
                                            Tools.DownloaderFeedback feedback) {
         if (installerJar == null || !installerJar.isFile()) return;
+        try {
+            net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.load();
+            net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.write();
+        } catch (Throwable ignored) {}
         List<LibEntry> toDownload = new ArrayList<>();
         Set<String> seenPaths = new HashSet<>();
         String detectedMc = gameVersion;
@@ -287,15 +291,40 @@ public class ForgeDownloadTask implements Runnable, Tools.DownloaderFeedback {
         return group + "/" + artifact + "/" + version + "/" + artifact + "-" + version + classifier + "." + ext;
     }
 
+    private static String findVanillaVersionUrl(String mcVersion) {
+        JMinecraftVersionList.Version listed = AsyncMinecraftDownloader.getListedVersion(mcVersion);
+        if (listed != null && listed.url != null) return listed.url;
+        try {
+            String raw = DownloadUtils.downloadStringCached(
+                    "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
+                    "version_manifest_v2",
+                    input -> input
+            );
+            JMinecraftVersionList list = Tools.GLOBAL_GSON.fromJson(raw, JMinecraftVersionList.class);
+            if (list != null && list.versions != null) {
+                for (JMinecraftVersionList.Version v : list.versions) {
+                    if (v != null && mcVersion.equals(v.id) && v.url != null) {
+                        return v.url;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w("ForgePrewarm", "Failed to lookup version manifest for " + mcVersion, e);
+        }
+        return null;
+    }
+
     private static void ensureVanillaClientPrewarmed(String mcVersion, Tools.DownloaderFeedback feedback) {
         try {
             File verDir = new File(Tools.DIR_HOME_VERSION, mcVersion);
             File verJson = new File(verDir, mcVersion + ".json");
             File verJar = new File(verDir, mcVersion + ".jar");
-            JMinecraftVersionList.Version listed = AsyncMinecraftDownloader.getListedVersion(mcVersion);
-            if ((!verJson.isFile() || verJson.length() == 0) && listed != null && listed.url != null) {
-                FileUtils.ensureParentDirectory(verJson);
-                DownloadUtils.downloadFile(listed.url, verJson);
+            if (!verJson.isFile() || verJson.length() == 0) {
+                String url = findVanillaVersionUrl(mcVersion);
+                if (url != null) {
+                    FileUtils.ensureParentDirectory(verJson);
+                    DownloadUtils.downloadFile(url, verJson);
+                }
             }
             if ((!verJar.isFile() || !DownloadUtils.isValidZipOrJar(verJar)) && verJson.isFile()) {
                 if (verJar.exists()) verJar.delete();

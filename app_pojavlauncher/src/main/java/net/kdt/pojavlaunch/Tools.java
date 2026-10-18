@@ -1649,16 +1649,30 @@ public final class Tools {
                 return java8;
             }
         }
+        int maxAllowedJava = targetJavaVersion <= 8 ? 8 : (targetJavaVersion <= 21 ? 21 : Integer.MAX_VALUE);
         String runtime = getSelectedRuntime(minecraftProfile);
         Runtime pickedRuntime = MultiRTUtils.read(runtime);
-        if(runtime == null || pickedRuntime.javaVersion == 0 || pickedRuntime.javaVersion < targetJavaVersion
-                || (targetJavaVersion <= 8 && pickedRuntime.javaVersion > 8)) {
-            String preferredRuntime = targetJavaVersion <= 8
-                    ? MultiRTUtils.getExactJreName(8)
-                    : MultiRTUtils.getNearestJreName(targetJavaVersion);
-            if(preferredRuntime == null) preferredRuntime = MultiRTUtils.getNearestJreName(targetJavaVersion);
-            if(preferredRuntime == null) throw new RuntimeException("Failed to autopick runtime!");
-            minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX+preferredRuntime;
+        if (runtime == null || pickedRuntime.javaVersion == 0
+                || pickedRuntime.javaVersion < targetJavaVersion
+                || pickedRuntime.javaVersion > maxAllowedJava) {
+            String preferredRuntime = null;
+            if (targetJavaVersion <= 8) {
+                preferredRuntime = MultiRTUtils.getExactJreName(8);
+            } else if (targetJavaVersion <= 17) {
+                preferredRuntime = MultiRTUtils.getExactJreName(17);
+                if (preferredRuntime == null) {
+                    preferredRuntime = MultiRTUtils.getExactJreName(21);
+                }
+            } else if (targetJavaVersion <= 21) {
+                preferredRuntime = MultiRTUtils.getExactJreName(21);
+            } else {
+                preferredRuntime = MultiRTUtils.getExactJreName(25);
+            }
+            if (preferredRuntime == null) {
+                preferredRuntime = MultiRTUtils.getNearestJreName(targetJavaVersion);
+            }
+            if (preferredRuntime == null) throw new RuntimeException("Failed to autopick runtime!");
+            minecraftProfile.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + preferredRuntime;
             runtime = preferredRuntime;
         }
         return runtime;

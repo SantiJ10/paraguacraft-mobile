@@ -1241,37 +1241,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
 
         boolean is_landscape_allowed = (orientation_landscape != -1);
         boolean is_portrait_allowed = (orientation_portrait != -1);
-        int req; /* Requested orientation */
-
-        /* No valid hint, nothing is explicitly allowed */
-        if (!is_portrait_allowed && !is_landscape_allowed) {
-            if (resizable) {
-                /* All orientations are allowed, respecting user orientation lock setting */
-                req = ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE;
-            } else {
-                /* Fixed window and nothing specified. Get orientation from w/h of created window */
-                req = (w > h ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT);
-            }
-        } else {
-            /* At least one orientation is allowed */
-            if (resizable) {
-                if (is_portrait_allowed && is_landscape_allowed) {
-                    /* hint allows both landscape and portrait, prefer landscape*/
-                    req = ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE;
-                } else {
-                    /* Use the only one allowed "orientation" */
-                    req = (is_landscape_allowed ? orientation_landscape : orientation_portrait);
-                }
-            } else {
-                /* Fixed window and both orientations are allowed. Choose one. */
-                if (is_portrait_allowed && is_landscape_allowed) {
-                    req = (w > h ? orientation_landscape : orientation_portrait);
-                } else {
-                    /* Use the only one allowed "orientation" */
-                    req = (is_landscape_allowed ? orientation_landscape : orientation_portrait);
-                }
-            }
-        }
+        /* Minecraft on Android must always stay in landscape, even if a utility/test window has w < h */
+        int req = (orientation_landscape != -1)
+                ? orientation_landscape
+                : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
 
         Log.v(TAG, "setOrientation() requestedOrientation=" + req + " width=" + w +" height="+ h +" resizable=" + resizable + " hint=" + hint);
         mSingleton.setRequestedOrientation(req);

@@ -206,21 +206,42 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
             return null;
         }
         if (javaVersion <= 8 && shouldPreferJava17ForInstaller(modFile)) {
-            String jre17 = MultiRTUtils.getNearestJreName(17);
+            String jre17 = MultiRTUtils.getExactJreName(17);
+            if (jre17 == null) {
+                jre17 = MultiRTUtils.getExactJreName(21);
+            }
+            if (jre17 == null) {
+                try {
+                    jre17 = NewJREUtil.ensureRuntimeInstalled(this, 17);
+                } catch (Exception e) {
+                    Log.e("JavaGUILauncher", "Failed to auto-download Java 17 for installer", e);
+                }
+            }
             if (jre17 != null) {
                 Runtime rt17 = MultiRTUtils.forceReread(jre17);
-                if (rt17 != null && rt17.javaVersion >= 17) {
+                if (rt17 != null && rt17.javaVersion >= 17 && rt17.javaVersion <= 21) {
                     return rt17;
                 }
             }
         }
-        String nearestRuntime = MultiRTUtils.getNearestJreName(javaVersion);
+        int targetMajor = javaVersion <= 8 ? 8 : (javaVersion <= 17 ? 17 : 21);
+        String exactRuntime = MultiRTUtils.getExactJreName(targetMajor);
+        if (exactRuntime == null && targetMajor == 17) {
+            exactRuntime = MultiRTUtils.getExactJreName(21);
+        }
+        if (exactRuntime == null) {
+            try {
+                exactRuntime = NewJREUtil.ensureRuntimeInstalled(this, targetMajor);
+            } catch (Exception e) {
+                Log.e("JavaGUILauncher", "Failed to auto-download Java " + targetMajor + " for installer", e);
+            }
+        }
+        String nearestRuntime = exactRuntime != null ? exactRuntime : MultiRTUtils.getNearestJreName(javaVersion);
         if(nearestRuntime == null) {
             finalErrorDialog(getString(R.string.multirt_nocompatiblert, javaVersion));
             return null;
         }
         Runtime selectedRuntime = MultiRTUtils.forceReread(nearestRuntime);
-        int selectedJavaVersion = Math.max(javaVersion, selectedRuntime.javaVersion);
         return selectedRuntime;
     }
 
@@ -252,6 +273,10 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
 
     private void startModInstaller(File modFile, String javaArgs) {
         new Thread(() -> {
+            try {
+                net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.load();
+                net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.write();
+            } catch (Throwable ignored) {}
             // Maybe replace with more advanced arg parsing logic later
             List<String> argList = javaArgs != null ? Arrays.asList(javaArgs.split(" ")) : null;
             File selectedMod = modFile;

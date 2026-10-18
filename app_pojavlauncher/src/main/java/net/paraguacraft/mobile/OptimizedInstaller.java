@@ -81,15 +81,18 @@ public final class OptimizedInstaller {
         boolean lite = DeviceTier.LITE.equals(tier);
         progress.onMessage("Instalando Optimized " + pack.displayName() + " (" + pack.loader + ")");
 
+        try {
+            LauncherProfiles.load();
+            LauncherProfiles.write();
+        } catch (Throwable ignored) {}
+
+        ensureJavaRuntime(ctx, pack.javaMajor, progress);
+
         String versionId;
         MinecraftProfile existingProfile = findProfile(pack);
         if ("forge".equals(pack.loader)) {
             versionId = findForgeVersionId(pack);
             if (versionId == null) {
-                if (pack.javaMajor <= 8) {
-                    progress.onMessage("Preparando Java 8 para Forge…");
-                    ensureJava8(ctx);
-                }
                 File staleShared = new File(Tools.DIR_CACHE, "forge-installer.jar");
                 if (staleShared.isFile()) {
                     //noinspection ResultOfMethodCallIgnored
@@ -99,7 +102,7 @@ public final class OptimizedInstaller {
                     versionId = ForgeLegacyInstall.install(ctx, pack, progress);
                 } else {
                     progress.onMessage("Descargando instalador y librerías Forge " + pack.mc + " " + pack.loaderVersion + "…");
-                    File installer = downloadForgeInstaller(pack);
+                    File installer = downloadForgeInstaller(pack, progress);
                     throw new ForgeGuiNeeded(pack, installer);
                 }
             }
@@ -465,25 +468,41 @@ public final class OptimizedInstaller {
         return null;
     }
 
-    private static void ensureJava8(Context ctx) {
+    private static void ensureJavaRuntime(Context ctx, int requiredMajor, Progress progress) {
+        if (ctx == null) return;
+        int canonical = NewJREUtil.mapRequiredJavaMajor(requiredMajor);
         try {
-            for (Runtime r : MultiRTUtils.getInstalledRuntimes()) {
-                if (r != null && r.javaVersion == 8) return;
+            if (MultiRTUtils.getExactJreName(canonical) != null) return;
+            if (progress != null) {
+                progress.onMessage("Descargando Java " + canonical + " para Minecraft…");
             }
-            NewJREUtil.ExternalRuntime.JRE_8.downloadRuntime(ctx);
+            NewJREUtil.ensureRuntimeInstalled(ctx, canonical);
         } catch (Exception e) {
-            Log.w(TAG, "No se pudo bajar JRE 8; Forge usará el Java que haya", e);
+            Log.w(TAG, "No se pudo bajar JRE " + canonical + "; se intentará al iniciar", e);
         }
     }
 
     public static File downloadForgeInstaller(OptimizedManifest.Pack pack) throws IOException {
+        return downloadForgeInstaller(pack, null);
+    }
+
+    public static File downloadForgeInstaller(OptimizedManifest.Pack pack, Progress progress) throws IOException {
         final String[] err = {null};
         final File[] out = {null};
         ForgeDownloadTask task = new ForgeDownloadTask(new ModloaderDownloadListener() {
             @Override public void onDownloadFinished(File downloadedFile) { out[0] = downloadedFile; }
             @Override public void onDataNotAvailable() { err[0] = "No hay instalador Forge para " + pack.mc; }
             @Override public void onDownloadError(Exception e) { err[0] = e.getMessage(); }
-        }, pack.mc, pack.loaderVersion);
+        }, pack.mc, pack.loaderVersion) {
+            @Override
+            public void updateProgress(int curr, int max) {
+                super.updateProgress(curr, max);
+                if (progress != null && max > 0) {
+                    int pct = (int) (((float) curr / (float) max) * 100f);
+                    progress.onMessage("Descargando archivos Forge " + pack.mc + " (" + pct + "%)…");
+                }
+            }
+        };
         task.run();
         if (err[0] != null) throw new IOException(err[0]);
         if (out[0] == null || !out[0].isFile()) throw new IOException("No se descargó el instalador Forge");
@@ -491,8 +510,9 @@ public final class OptimizedInstaller {
     }
 
     public static android.content.Intent forgeInstallIntent(Context ctx, File installer, OptimizedManifest.Pack pack) {
-        ModLoader loader = new ModLoader(ModLoader.MOD_LOADER_FORGE, pack.loaderVersion, pack.mc);
-        return loader.getInstallationIntent(ctx, installer);
+        android.content.Intent intent = new android.content.Intent(ctx, net.kdt.pojavlaunch.JavaGUILauncherActivity.class);
+        net.kdt.pojavlaunch.modloaders.ForgeUtils.addAutoInstallArgs(intent, installer, true);
+        return intent;
     }
 
     private static void installHostedAssetMod(Context ctx, String filename, File modsDir, Progress progress) {
@@ -868,9 +888,10 @@ public final class OptimizedInstaller {
         p.lastVersionId = versionId;
         p.gameDir = "./" + gameDirName(pack);
         p.pojavRendererName = DeviceTier.renderer(ctx, tier);
-        if (pack.mc.equals("1.8.9") || pack.mc.equals("1.12.2")) {
-            String java8 = MultiRTUtils.getExactJreName(8);
-            if (java8 != null) p.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + java8;
+        int targetJava = NewJREUtil.mapRequiredJavaMajor(pack.javaMajor);
+        String exactJre = MultiRTUtils.getExactJreName(targetJava);
+        if (exactJre != null) {
+            p.javaDir = Tools.LAUNCHERPROFILES_RTPREFIX + exactJre;
         }
         p.javaArgs = "-Xms" + (LauncherPreferences.PREF_RAM_ALLOCATION / 2) + "M";
         p.icon = BrandPack.profileIconDataUri(ctx);

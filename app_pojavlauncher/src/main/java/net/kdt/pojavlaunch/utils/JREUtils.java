@@ -410,11 +410,10 @@ public class JREUtils {
             net.kdt.pojavlaunch.tasks.AsyncAssetManager.unpackComponent(activity, "forge_installer", true);
         } catch (Throwable ignored) {}
 
-        // Adds/changes methods for compatibility
-        userArgs.add("-javaagent:"+new File(Tools.DIR_DATA,"MioLibPatcher/MioLibPatcher.jar").getAbsolutePath());
-        userArgs.add("-Dmiolibpatcher.alc10=true");
-        if (gameDirectory == null) {
-            userArgs.add("-Dmiolibpatcher.asmBackport=false");
+        // Adds/changes methods for game compatibility (do NOT attach to mod installers where gameDirectory == null)
+        if (gameDirectory != null) {
+            userArgs.add("-javaagent:" + new File(Tools.DIR_DATA, "MioLibPatcher/MioLibPatcher.jar").getAbsolutePath());
+            userArgs.add("-Dmiolibpatcher.alc10=true");
         }
 
         userArgs.addAll(JVMArgs);

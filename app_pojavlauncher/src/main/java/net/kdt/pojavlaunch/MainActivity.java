@@ -794,4 +794,25 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
 
         contentFrame.setTranslationY(-bottomPadding);
     }
+
+    /**
+     * Called by native libSDL3.so via JNI when SDL_ShowMessageBox / SDL_ShowSimpleMessageBox is invoked.
+     * Prevents JNI NoSuchMethodError / SIGABRT and logs the message to latestlog.txt.
+     */
+    @androidx.annotation.Keep
+    public int messageboxShowMessageBox(
+            int flags,
+            String title,
+            String message,
+            int[] buttonFlags,
+            int[] buttonIds,
+            String[] buttonTexts,
+            int[] colors) {
+        Logger.appendToLog("SDL MessageBox [" + title + "]: " + message);
+        Log.e("SDLMessageBox", "[" + title + "] " + message);
+        if (buttonIds != null && buttonIds.length > 0) {
+            return buttonIds[0];
+        }
+        return 0;
+    }
 }
