@@ -285,6 +285,10 @@ public final class Tools {
         return !getMods(filenames).isEmpty();
     }
 
+    public static boolean hasMods(File gameDir, String... filenames) {
+        return !getMods(gameDir, filenames).isEmpty();
+    }
+
     /**
      * Searches for mod in mods directory of current selected profile
      * Not case-sensitive
@@ -292,7 +296,11 @@ public final class Tools {
      * @return The found mods
      */
     public static List<File> getMods(String... filenames) {
-        File gameDir = getGameDir();
+        return getMods(getGameDir(), filenames);
+    }
+
+    public static List<File> getMods(File gameDir, String... filenames) {
+        if (gameDir == null) gameDir = getGameDir();
         File modsDir = new File(gameDir, "mods");
         File[] modFiles = modsDir.listFiles(file -> file.isFile() && file.getName().toLowerCase().endsWith(".jar"));
         if (modFiles == null) return new ArrayList<>();
@@ -455,6 +463,8 @@ public final class Tools {
         // Pre-process specific files
         disableSplash(gamedir);
         net.paraguacraft.mobile.MobileCompat.sanitizeGameDir(gamedir);
+        net.paraguacraft.mobile.BatterySaver.applyToGameDir(gamedir);
+        net.paraguacraft.mobile.BatterySaver.watchThermal(activity);
         String[] launchArgs = getMinecraftClientArgs(minecraftAccount, versionInfo, gamedir);
 
         // Select the appropriate openGL version
@@ -508,7 +518,7 @@ public final class Tools {
         javaArgList.add("-Dimgui.library.name=imgui-java");
         // We use an abomination to support all DH versions with a single library.
         javaArgList.add("-DZstdNativePath="+Tools.NATIVE_LIB_DIR+"/libzstd-jni-1.5.7-6-dhcompat.so");
-        boolean hasSodiumMod = hasMods(sodiumMods);
+        boolean hasSodiumMod = hasMods(gamedir, sodiumMods);
         if (hasSodiumMod) {
             for (String modName : sodiumMods) {
                 File mixinPropertiesConfigFile = new File(gamedir, "config/" + modName + "-mixins.properties");

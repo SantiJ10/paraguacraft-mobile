@@ -11,9 +11,11 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 
+import net.kdt.pojavlaunch.PojavApplication;
 import net.kdt.pojavlaunch.R;
 import net.kdt.pojavlaunch.Tools;
 import net.kdt.pojavlaunch.fragments.ProfileTypeSelectFragment;
@@ -56,9 +58,11 @@ public class WorkspaceFragment extends Fragment {
         FragmentActivity act = requireActivity();
         String instName = PgShell.instanceLabel();
 
-        // Los tiles son fijos: lo único que varía es la instancia activa. Sin
-        // esto se recreaba toda la grilla en cada onResume.
-        String signature = instName + "|" + cols;
+        boolean saverOn = BatterySaver.isEnabled();
+        int saverFps = BatterySaver.fpsCap();
+
+        // Los tiles son fijos: lo único que varía es la instancia activa o el estado de ahorro.
+        String signature = instName + "|" + cols + "|" + saverOn + "|" + saverFps;
         if (list.getChildCount() > 0 && signature.equals(mBuiltSignature)) return;
         mBuiltSignature = signature;
         list.removeAllViews();
@@ -136,8 +140,14 @@ public class WorkspaceFragment extends Fragment {
                         v -> Tools.swapFragment(act, ParaguaSkinsFragment.class, ParaguaSkinsFragment.TAG, null)),
                 new Item("Instancias y mundos", "Duplicá, mové o repará cada instalación por separado.", R.drawable.ic_folder,
                         v -> Tools.swapFragment(act, InstancesFragment.class, InstancesFragment.TAG, null)),
-                new Item("Descargar Minecraft", "Vanilla, Forge, Fabric, OptiFine y Optimized.", R.drawable.ic_menu_install_jar,
+                new Item("Descargar Minecraft", "Vanilla, Forge, NeoForge, Fabric, Quilt, OptiFine y Optimized.", R.drawable.ic_menu_install_jar,
                         v -> Tools.swapFragment(act, ProfileTypeSelectFragment.class, ProfileTypeSelectFragment.TAG, null)),
+                new Item("Horizon · Motor Rust", "Motor nativo experimental 26.3 sin Java (cuenta oficial).", R.drawable.ic_menu_optimized,
+                        v -> Tools.swapFragment(act, HorizonFragment.class, HorizonFragment.TAG, null)),
+                new Item("Limpiar almacenamiento", "Borrá caché, logs viejos y crash-reports sin tocar mundos ni mods.", R.drawable.ic_folder,
+                        v -> showCleanerDialog(act)),
+                new Item("Ahorro de batería", saverOn ? "Activo · tope " + saverFps + " FPS y control térmico." : "Desactivado · tocá para limitar FPS y temperatura.", R.drawable.ic_menu_settings,
+                        v -> showBatterySaverDialog(act, list)),
                 new Item("Archivos", "Instancias, mundos, mods y registros sin salir.", R.drawable.ic_folder,
                         v -> Tools.openPath(act, OptimizedInstaller.activeGameDir(), false)),
                 new Item("Paraguabot", "Ayuda y atajos. Mantener para compartir logs.", R.drawable.ic_menu_paraguabot,
@@ -273,6 +283,70 @@ public class WorkspaceFragment extends Fragment {
         LinearLayout l = new LinearLayout(requireContext());
         l.setBackgroundResource(R.drawable.pg_glass_card);
         return l;
+    }
+
+    private void showCleanerDialog(FragmentActivity act) {
+        Toast.makeText(act, "Analizando archivos temporales…", Toast.LENGTH_SHORT).show();
+        PojavApplication.sExecutorService.execute(() -> {
+            StorageCleaner.Result res = StorageCleaner.scan();
+            if (!isAdded()) return;
+            act.runOnUiThread(() -> {
+                if (res.files.isEmpty()) {
+                    new AlertDialog.Builder(act)
+                            .setTitle("Almacenamiento limpio")
+                            .setMessage("No hay instaladores en caché, descargas incompletas ni logs viejos para borrar.")
+                            .setPositiveButton("Listo", null)
+                            .show();
+                    return;
+                }
+                new AlertDialog.Builder(act)
+                        .setTitle("Limpiar almacenamiento")
+                        .setMessage("Se encontraron " + res.files.size() + " archivos temporales (" + res.humanSize() + ").\n\n"
+                                + "• Incluye logs rotados, crash-reports, instaladores en caché y descargas .part.\n"
+                                + "• Tus mundos, mods, texturas, shaders, capturas y ajustes quedan intactos.")
+                        .setPositiveButton("Liberar " + res.humanSize(), (d, w) ->
+                                PojavApplication.sExecutorService.execute(() -> {
+                                    long freed = StorageCleaner.clean(res);
+                                    if (isAdded()) {
+                                        act.runOnUiThread(() -> Toast.makeText(act,
+                                                "Liberados " + StorageCleaner.formatSize(freed),
+                                                Toast.LENGTH_LONG).show());
+                                    }
+                                }))
+                        .setNegativeButton("Cancelar", null)
+                        .show();
+            });
+        });
+    }
+
+    private void showBatterySaverDialog(FragmentActivity act, LinearLayout list) {
+        String[] labels = {
+                "Desactivado (rendimiento normal)",
+                "Activado · tope 30 FPS (máximo ahorro y menos calor)",
+                "Activado · tope 45 FPS (equilibrado recomendado)",
+                "Activado · tope 60 FPS (fluido sin calentar de más)"
+        };
+        int curIdx = 0;
+        if (BatterySaver.isEnabled()) {
+            int cap = BatterySaver.fpsCap();
+            if (cap <= 30) curIdx = 1;
+            else if (cap <= 45) curIdx = 2;
+            else curIdx = 3;
+        }
+        new AlertDialog.Builder(act)
+                .setTitle("Modo ahorro de batería y temperatura")
+                .setSingleChoiceItems(labels, curIdx, (d, which) -> {
+                    if (which == 0) BatterySaver.setConfig(false, 45);
+                    else if (which == 1) BatterySaver.setConfig(true, 30);
+                    else if (which == 2) BatterySaver.setConfig(true, 45);
+                    else BatterySaver.setConfig(true, 60);
+                    d.dismiss();
+                    mBuiltSignature = null;
+                    rebuild(list);
+                    Toast.makeText(act, labels[which], Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cerrar", null)
+                .show();
     }
 
     private void openOrToast(File dir) {

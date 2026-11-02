@@ -242,15 +242,24 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             if(minecraftProfile.pojavRendererName != null) {
                 Log.i("RdrDebug","__P_renderer="+minecraftProfile.pojavRendererName);
                 Tools.LOCAL_RENDERER = minecraftProfile.pojavRendererName;
-                // TODO: Remove this jank when it's not relevant anymore
-                // Shitty hack to make OSMZink smoothly transition into kopper
-                if (minecraftProfile.pojavRendererName.equals("vulkan_zink")) Tools.LOCAL_RENDERER = "opengles3_desktopgl_zink_kopper";
+                if ("vulkan_zink".equals(Tools.LOCAL_RENDERER)) {
+                    Tools.LOCAL_RENDERER = "opengles3_desktopgl_zink_kopper";
+                }
+            } else {
+                Tools.LOCAL_RENDERER = net.paraguacraft.mobile.DeviceTier.renderer(
+                        this, net.paraguacraft.mobile.DeviceTier.current(this));
+            }
+            if (!Tools.checkRendererCompatible(this, Tools.LOCAL_RENDERER)) {
+                Tools.RenderersList compat = Tools.getCompatibleRenderers(this);
+                Tools.LOCAL_RENDERER = compat.rendererIds.isEmpty()
+                        ? "opengles_mobileglues"
+                        : compat.rendererIds.get(0);
             }
             if (net.paraguacraft.mobile.DeviceTier.isWeakGpu()
                     && Tools.LOCAL_RENDERER != null
-                    && (Tools.LOCAL_RENDERER.contains("mobileglues") || Tools.LOCAL_RENDERER.contains("zink"))) {
-                Tools.LOCAL_RENDERER = "opengles2";
-                minecraftProfile.pojavRendererName = "opengles2";
+                    && Tools.LOCAL_RENDERER.contains("zink")
+                    && Tools.checkRendererCompatible(this, "opengles_mobileglues")) {
+                Tools.LOCAL_RENDERER = "opengles_mobileglues";
             }
 
             setTitle("Minecraft " + minecraftProfile.lastVersionId);
@@ -308,7 +317,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void loadControls() {
-        ControlScheme.applyCurrent(this);
+        String launchVer = minecraftProfile != null ? minecraftProfile.lastVersionId : null;
+        ControlScheme.applyForLaunch(this, launchVer);
         try {
             // Load keys
             mControlLayout.loadLayout(
@@ -474,34 +484,31 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             assetVersion = "legacy";
        } // If this fails.. oh well.
 
-        // FIXME: Automatic detection should be based on provided hint GLFW_CONTEXT_VERSION_MAJOR and GLFW_CONTEXT_VERSION_MINOR
-        // Autoselect renderer
-        boolean hasAngelica = hasMods("angelica");
+        // Autoselect renderer & Fixed-Function Pipeline Wrapper (SFPEW)
+        File activeGameDir = Tools.getGameDirPath(minecraftProfile);
+        boolean hasAngelica = Tools.hasMods(activeGameDir, "angelica");
         if (Tools.LOCAL_RENDERER == null) Tools.LOCAL_RENDERER = "opengles_mobileglues";
-        // Angelica IS the FPE emulator
-        if (hasAngelica) Tools.useSFPEW = false;
 
-        // TODO: Detection for if a mod is present that can use system GLES as driver, set
-        // Tools.LOCAL_RENDERER = "opengles_system_gles";
-
-        // This only happens if an old renderer that was selected is removed. Uses renderer_values
-        // as the list of priority to use, highest to lowest.
         if(!Tools.checkRendererCompatible(this, Tools.LOCAL_RENDERER)) {
             Tools.RenderersList renderersList = Tools.getCompatibleRenderers(this);
-            String firstCompatibleRenderer = renderersList.rendererIds.get(0);
+            String firstCompatibleRenderer = renderersList.rendererIds.isEmpty()
+                    ? "opengles_mobileglues"
+                    : renderersList.rendererIds.get(0);
             Log.i("runCraft","Missing renderer "+Tools.LOCAL_RENDERER+ " will be replaced with "+firstCompatibleRenderer);
             Tools.LOCAL_RENDERER = firstCompatibleRenderer;
             Tools.releaseRenderersCache();
         }
-        // Esto pisa también lo que el usuario haya elegido a mano: en versiones
-        // viejas Zink/LTW/MobileGlues arrancan en negro, así que es preferible
-        // ignorar la preferencia antes que dejar la instancia sin poder jugarse.
         int requiredJavaVersion = NewJREUtil.requiredJavaMajor(version);
         if (net.paraguacraft.mobile.DeviceTier.shouldUseGl4es(versionId, requiredJavaVersion)
                 && Tools.checkRendererCompatible(this, "opengles2")) {
             Tools.LOCAL_RENDERER = "opengles2";
             Log.i("runCraft", "GL4ES for " + versionId);
         }
+        // SimpleFPEWrapper (libSimpleFPEWrapper.so) solo debe usarse en OpenGL 1.x/2.x (Java 8 / <= 1.16.5)
+        // sobre MobileGlues. En 1.17+ y 26.3 (Core Profile / SDL3 / RenderPearl / Sodium) rompe el contexto GL.
+        Tools.useSFPEW = (requiredJavaVersion <= 8)
+                && !hasAngelica
+                && "opengles_mobileglues".equals(Tools.LOCAL_RENDERER);
 
         // MCL-3732 Mitigation
         // I don't trust the bug tracker. 'server-resource-pack" was removed in 1.20.3-pre3

@@ -24,7 +24,7 @@ public class ProfileFixer {
             );
             JSONObject profilesArray = minecraftProfiles.getJSONObject("profiles");
             profileName = findProfileName(profileName, profilesArray);
-            oldProfile = profileName != null ? minecraftProfiles.getJSONObject(profileName) : null;
+            oldProfile = profileName != null ? profilesArray.optJSONObject(profileName) : null;
         }catch (IOException | JSONException e) {
             System.out.println("Failed to store Forge profile: "+e);
         }
@@ -41,15 +41,15 @@ public class ProfileFixer {
                 );
                 JSONObject profilesArray = minecraftProfiles.getJSONObject("profiles");
                 profileName = findProfileName(profileName, profilesArray);
-                if(modpackFixupId != null) fixupModpackProfile(profileName, modpackFixupId, profilesArray);
-                if(oldProfile != null) {
+                if(modpackFixupId != null && profileName != null) fixupModpackProfile(profileName, modpackFixupId, profilesArray);
+                if(oldProfile != null && profileName != null) {
                     if(suppressProfileCreation) profilesArray.put(profileName, oldProfile); // restore the old profile
                     else {
                         String name = pickProfileName(profileName);
                         while(profilesArray.has(name)) name = pickProfileName(profileName);
                         profilesArray.put(name, oldProfile); // restore the old profile under a new name
                     }
-                }else{
+                }else if (profileName != null){
                     if(suppressProfileCreation) profilesArray.remove(profileName); // remove the new profile
                     // otherwise it wont be removed
                 }
@@ -69,7 +69,7 @@ public class ProfileFixer {
             return;
         }
         String modloaderVersionId = modloaderProfile.optString("lastVersionId");
-        if(modloaderVersionId == null) {
+        if(modloaderVersionId == null || modloaderVersionId.isEmpty()) {
             System.out.println("Failed to find the modloader profile version, keys:" + modloaderProfile.keySet().toString());
             return;
         }

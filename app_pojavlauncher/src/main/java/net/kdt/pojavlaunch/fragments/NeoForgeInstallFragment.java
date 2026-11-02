@@ -7,15 +7,8 @@ import android.widget.ExpandableListAdapter;
 
 import androidx.annotation.NonNull;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-
 import net.kdt.pojavlaunch.JavaGUILauncherActivity;
 import net.kdt.pojavlaunch.R;
-import net.kdt.pojavlaunch.Tools;
-import net.kdt.pojavlaunch.modloaders.ForgeDownloadTask;
 import net.kdt.pojavlaunch.modloaders.ForgeUtils;
 import net.kdt.pojavlaunch.modloaders.ForgeVersionListHandler;
 import net.kdt.pojavlaunch.modloaders.ModloaderListenerProxy;
@@ -43,7 +36,6 @@ public class NeoForgeInstallFragment extends ModVersionListFragment<List<String>
 
     private static final String NEOFORGE_METADATA_URL = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
 
-
     @Override
     public void onAttach(@NonNull Context context) {
         super.onAttach(context);
@@ -69,30 +61,25 @@ public class NeoForgeInstallFragment extends ModVersionListFragment<List<String>
         try {
             SAXParserFactory parserFactory = SAXParserFactory.newInstance();
             saxParser = parserFactory.newSAXParser();
-        }catch (SAXException | ParserConfigurationException e) {
+        } catch (SAXException | ParserConfigurationException e) {
             e.printStackTrace();
-            // if we cant make a parser we might as well not even try to parse anything
             return null;
         }
         try {
-            //of_test();
             return DownloadUtils.downloadStringCached(NEOFORGE_METADATA_URL, "neoforge_versions", input -> {
                 try {
                     ForgeVersionListHandler handler = new ForgeVersionListHandler();
                     saxParser.parse(new InputSource(new StringReader(input)), handler);
                     return handler.getVersions();
-                    // IOException is present here StringReader throws it only if the parser called close()
-                    // sooner than needed, which is a parser issue and not an I/O one
-                }catch (SAXException | IOException e) {
+                } catch (SAXException | IOException e) {
                     throw new DownloadUtils.ParseException(e);
                 }
             });
-        }catch (DownloadUtils.ParseException | IOException e) {
+        } catch (DownloadUtils.ParseException | IOException e) {
             e.printStackTrace();
             return null;
         }
     }
-
 
     @Override
     public ExpandableListAdapter createAdapter(List<String> versionList, LayoutInflater layoutInflater) {
@@ -107,9 +94,7 @@ public class NeoForgeInstallFragment extends ModVersionListFragment<List<String>
     @Override
     public void onDownloadFinished(Context context, File downloadedFile) {
         Intent modInstallerStartIntent = new Intent(context, JavaGUILauncherActivity.class);
-        modInstallerStartIntent
-                .putExtra("javaArgs", "-jar "+downloadedFile.getAbsolutePath()+" --install-client")
-                .putExtra("openLogOutput", true);
+        ForgeUtils.addNeoForgeAutoInstallArgs(modInstallerStartIntent, downloadedFile, true, null);
         context.startActivity(modInstallerStartIntent);
     }
 }

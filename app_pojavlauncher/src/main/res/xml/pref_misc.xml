@@ -38,4 +38,24 @@
 
     </PreferenceCategory>
 
+    <PreferenceCategory android:title="Paraguacraft">
+        <SwitchPreference
+            android:defaultValue="false"
+            android:key="pgBatterySaver"
+            android:title="Modo ahorro de batería"
+            android:summary="Limita FPS, baja la distancia de render y avisa si el celular se calienta. Solo baja valores, nunca los sube." />
+        <androidx.preference.ListPreference
+            android:defaultValue="45"
+            android:dependency="pgBatterySaver"
+            android:key="pgBatterySaverFps"
+            android:title="Límite de FPS en ahorro"
+            android:entries="@array/pg_battery_fps_names"
+            android:entryValues="@array/pg_battery_fps_values"
+            app2:useSimpleSummaryProvider="true" />
+        <Preference
+            android:key="pgStorageCleaner"
+            android:title="Liberar espacio"
+            android:summary="Borra logs viejos, crash-reports, descargas a medias e instaladores en caché. No toca mundos, mods ni capturas." />
+    </PreferenceCategory>
+
 </PreferenceScreen>

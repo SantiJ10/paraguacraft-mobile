@@ -115,20 +115,37 @@ public final class DeviceTier {
         return Math.min(want, max);
     }
 
-    /** Zink/MobileGlues en GPU débil = negro / 10 fps. 1.8.9/1.12.2 siempre GL4ES. */
+    /**
+     * En Amethyst el backend universal incluido en el APK es MobileGlues (+ SimpleFPEWrapper automático
+     * en versiones <= 1.16.5). Solo usamos "opengles2" si libng_gl4es.so existe realmente en el APK.
+     */
     public static String renderer(String tier) {
         return renderer(null, tier);
     }
 
+    private static boolean hasBundledGl4es() {
+        return Tools.NATIVE_LIB_DIR != null
+                && new java.io.File(Tools.NATIVE_LIB_DIR, "libng_gl4es.so").exists();
+    }
+
     public static String renderer(Context ctx, String tier) {
         String forced = LauncherPreferences.DEFAULT_PREF.getString("pg_renderer", "auto");
-        if (forced != null && !forced.isEmpty() && !"auto".equals(forced)) return forced;
+        if (forced != null && !forced.isEmpty() && !"auto".equals(forced)) {
+            if ("opengles2".equals(forced) && !hasBundledGl4es()) {
+                return "opengles_mobileglues";
+            }
+            if ("vulkan_zink".equals(forced)) {
+                return "opengles3_desktopgl_zink_kopper";
+            }
+            return forced;
+        }
         boolean weak = ctx != null ? isWeakGpu(ctx) : isWeakGpu();
-        if (weak || LITE.equals(tier)) return "opengles2";
+        if ((weak || LITE.equals(tier)) && hasBundledGl4es()) return "opengles2";
         return "opengles_mobileglues";
     }
 
     public static boolean shouldUseGl4es(String versionId) {
+        if (!hasBundledGl4es()) return false;
         if (isWeakGpu()) return true;
         if (versionId == null) return false;
         String v = versionId.toLowerCase();
@@ -136,14 +153,12 @@ public final class DeviceTier {
     }
 
     /**
-     * GL4ES es el único backend confiable antes de 1.17: MobileGlues y Zink traducen
-     * GL de escritorio moderno y en versiones viejas dan pantalla negra o texturas rotas.
-     *
-     * Mirar solo el ID de versión dejaba afuera 1.9 a 1.16, y parsearlo no sirve porque
-     * IDs como "1.21.1-neoforge-21.1.42" engañan a cualquier regex. El Java que pide el
-     * JSON de la versión sí es fiable: Java 8 equivale a 1.16 o anterior.
+     * Si libng_gl4es.so está presente, GL4ES se usa en versiones Java 8 (<= 1.16.5).
+     * Cuando no está presente (arquitectura Amethyst MobileGlues + SimpleFPEWrapper),
+     * devuelve false para que MobileGlues active SimpleFPEWrapper automáticamente.
      */
     public static boolean shouldUseGl4es(String versionId, int requiredJavaMajor) {
+        if (!hasBundledGl4es()) return false;
         if (requiredJavaMajor > 0 && requiredJavaMajor <= 8) return true;
         return shouldUseGl4es(versionId);
     }
@@ -235,12 +250,24 @@ public final class DeviceTier {
             boolean changed = false;
             for (MinecraftProfile p : LauncherProfiles.mainProfileJson.profiles.values()) {
                 if (p == null) continue;
+                // Reparar perfiles que hayan quedado apuntando a un renderer inexistente ("opengles2" sin libng_gl4es.so)
+                if ("opengles2".equals(p.pojavRendererName) && !hasBundledGl4es()) {
+                    p.pojavRendererName = "opengles_mobileglues";
+                    changed = true;
+                    continue;
+                }
+                if ("vulkan_zink".equals(p.pojavRendererName)) {
+                    p.pojavRendererName = "opengles3_desktopgl_zink_kopper";
+                    changed = true;
+                    continue;
+                }
                 boolean optimized = p.name != null && p.name.startsWith("Optimized ");
                 boolean badGpuRenderer = isWeakGpu() && p.pojavRendererName != null
-                        && (p.pojavRendererName.contains("mobileglues") || p.pojavRendererName.contains("zink"));
+                        && p.pojavRendererName.contains("zink");
                 if (!optimized && !badGpuRenderer) continue;
-                if (!renderer.equals(p.pojavRendererName)) {
-                    p.pojavRendererName = renderer;
+                String target = shouldUseGl4es(p.lastVersionId) ? "opengles2" : renderer;
+                if (!target.equals(p.pojavRendererName)) {
+                    p.pojavRendererName = target;
                     changed = true;
                 }
             }

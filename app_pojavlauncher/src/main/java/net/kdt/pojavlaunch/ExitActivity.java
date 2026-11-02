@@ -30,7 +30,7 @@ public class ExitActivity extends AppCompatActivity {
         int message = isSignal ? R.string.mcn_signal_title : R.string.mcn_exit_title;
 
         new AlertDialog.Builder(this)
-                .setMessage(getString(message,code))
+                .setMessage(net.paraguacraft.mobile.CrashDiagnosis.buildExitMessage(getString(message,code)))
                 .setPositiveButton(R.string.main_share_logs, (dialog, which) -> shareLog(this))
                 .setOnDismissListener(dialog -> ExitActivity.this.finish())
                 .show();

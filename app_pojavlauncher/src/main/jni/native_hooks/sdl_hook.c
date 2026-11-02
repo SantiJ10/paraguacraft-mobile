@@ -35,10 +35,13 @@ static bool custom_SDL_InitSubSystem_Func(SDL_InitFlags flags) {
 
     // This is the normal for the launcher, the default in SDL is false.
     SET_DLSYM_PTR(dlopen("libSDL3.so", RTLD_NOLOAD), SDL_SetHint);
-    if (SDL_SetHint_p) SDL_SetHint_p("SDL_RETURN_KEY_HIDES_IME", "true");
+    if (SDL_SetHint_p) {
+        SDL_SetHint_p("SDL_RETURN_KEY_HIDES_IME", "true");
+        SDL_SetHint_p("SDL_ORIENTATIONS", "LandscapeLeft LandscapeRight");
+    }
     // FIXME: MobileGlues has issues with passing in the proper EGL params to make this work
     const char *egl = getenv("POJAVEXEC_EGL");
-    if (egl && strcmp(egl, "libmobileglues.so") == 0) {
+    if (SDL_SetHint_p && egl && strcmp(egl, "libmobileglues.so") == 0) {
         SDL_SetHint_p("SDL_OPENGL_FORCE_SRGB_FRAMEBUFFER", "0");
     }
 
@@ -51,19 +54,6 @@ static bool custom_SDL_InitSubSystem_Func(SDL_InitFlags flags) {
     BYTEHOOK_POP_STACK();
     return r;
 }
-
-//// This doesn't work because lwjgl doesn't use plt/got to access the bindings, fml
-//static bool custom_SDL_SetTextInputArea_Func(SDL_Window *window, const SDL_Rect *rect, int cursor) {
-//    TRY_ATTACH_ENV(SDL_GetTextInputArea);
-//    notifyLauncher(dvm_env, NOTIF_TYPE_SDL, (int[]) {
-//        ACTION_SEND_TEXTBOX_RECT,
-//        rect->x, rect->y, rect->x + rect->w, rect->y + rect->h, cursor
-//    }, 6);
-//    int r = BYTEHOOK_CALL_PREV(custom_SDL_SetTextInputArea_Func, SDL_SetTextInputArea_t, window, rect, cursor);
-//    BYTEHOOK_POP_STACK();
-//    return r;
-//}
-
 
 void create_sdl_hooks(bytehook_hook_all_t bytehook_hook_all_p) {
     // Don't set callee_path_name to anything besides NULL or else it won't be able to find the symbol

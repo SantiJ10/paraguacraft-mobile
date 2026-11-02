@@ -223,6 +223,7 @@ public class JREUtils {
 
         envMap.put("LD_LIBRARY_PATH", LD_LIBRARY_PATH);
         envMap.put("PATH", jreHome + "/bin:" + Os.getenv("PATH"));
+        envMap.put("SDL_HINT_ORIENTATIONS", "LandscapeLeft LandscapeRight");
         if(FFmpegPlugin.isAvailable) {
             envMap.put("POJAV_FFMPEG_PATH", FFmpegPlugin.executablePath);
         }
@@ -339,6 +340,8 @@ public class JREUtils {
             reader.close();
         }
     }
+    public static volatile Runnable sBeforeSuccessExitHook;
+
     public static void launchJavaVM(final AppCompatActivity activity, final Runtime runtime, File gameDirectory, final List<String> JVMArgs, final String userArgsString) throws Throwable {
         String runtimeHome = MultiRTUtils.getRuntimeHome(runtime.name).getAbsolutePath();
 
@@ -352,8 +355,10 @@ public class JREUtils {
             // If using nothing (aka sys driver) then don't set this so SDL can auto find the
             // native gles driver, because providing it ourselves is useless effort.
             // This only matters for Angelica because Mojunk is never using SDL on non-Core
-            if (graphicsLib != null && !LOCAL_RENDERER.equals("opengles_system_gles"))
-                Os.setenv("SDL_OPENGL_LIBRARY", graphicsLib, true);
+            if (graphicsLib != null && !LOCAL_RENDERER.equals("opengles_system_gles")) {
+                File fullGlLib = new File(NATIVE_LIB_DIR, graphicsLib);
+                Os.setenv("SDL_OPENGL_LIBRARY", fullGlLib.exists() ? fullGlLib.getAbsolutePath() : graphicsLib, true);
+            }
             if (Os.getenv("POJAVEXEC_EGL") != null && !LOCAL_RENDERER.equals("opengles_system_gles"))
                 Os.setenv("SDL_EGL_LIBRARY", NATIVE_LIB_DIR+"/"+Os.getenv("POJAVEXEC_EGL"), true);
         } catch (ErrnoException e) {
@@ -389,7 +394,12 @@ public class JREUtils {
         // el low-memory killer cerraba el juego. Se arranca por la mitad y la JVM
         // crece solo si hace falta.
         int xmxMb = LauncherPreferences.PREF_RAM_ALLOCATION;
-        int xmsMb = Math.max(256, Math.min(xmxMb, xmxMb / 2));
+        if (gameDirectory == null) {
+            // En instaladores de Forge/NeoForge/OptiFine el proceso :launcher sigue vivo en memoria;
+            // limitar el heap evita que el Low-Memory Killer cierre el instalador a mitad de camino.
+            xmxMb = Math.min(xmxMb, 896);
+        }
+        int xmsMb = Math.max(256, Math.min(xmxMb, gameDirectory == null ? 256 : (xmxMb / 2)));
         userArgs.add("-Xms" + xmsMb + "M");
         userArgs.add("-Xmx" + xmxMb + "M");
         if(LOCAL_RENDERER != null) userArgs.add("-Dorg.lwjgl.opengl.libname=" + graphicsLib);
@@ -428,9 +438,19 @@ public class JREUtils {
 
         final int exitCode = VMLauncher.launchJVM(userArgs.toArray(new String[0]));
         Logger.appendToLog("Java Exit code: " + exitCode);
+        if (exitCode == 0 && sBeforeSuccessExitHook != null) {
+            try {
+                sBeforeSuccessExitHook.run();
+            } catch (Throwable hookErr) {
+                Log.w("JREUtils", "Post-install hook error", hookErr);
+            } finally {
+                sBeforeSuccessExitHook = null;
+            }
+        }
         if (exitCode != 0) {
             LifecycleAwareAlertDialog.DialogCreator dialogCreator = (dialog, builder)->
-                    builder.setMessage(activity.getString(R.string.mcn_exit_title, exitCode))
+                    builder.setMessage(net.paraguacraft.mobile.CrashDiagnosis.buildExitMessage(
+                            activity.getString(R.string.mcn_exit_title, exitCode)))
                     .setPositiveButton(R.string.main_share_logs, (dialogInterface, which)-> shareLog(activity));
 
             LifecycleAwareAlertDialog.haltOnDialog(activity.getLifecycle(), activity, dialogCreator);

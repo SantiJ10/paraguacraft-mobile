@@ -10,8 +10,11 @@ import org.xml.sax.SAXException;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.StringReader;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
@@ -20,48 +23,95 @@ import javax.xml.parsers.SAXParserFactory;
 public class ForgeUtils {
     private static final String FORGE_METADATA_URL = "https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml";
     private static final String FORGE_INSTALLER_URL = "https://maven.minecraftforge.net/net/minecraftforge/forge/%1$s/forge-%1$s-installer.jar";
+
     public static List<String> downloadForgeVersions() throws IOException {
         SAXParser saxParser;
         try {
             SAXParserFactory parserFactory = SAXParserFactory.newInstance();
             saxParser = parserFactory.newSAXParser();
-        }catch (SAXException | ParserConfigurationException e) {
+        } catch (SAXException | ParserConfigurationException e) {
             e.printStackTrace();
-            // if we cant make a parser we might as well not even try to parse anything
             return null;
         }
         try {
-            //of_test();
             return DownloadUtils.downloadStringCached(FORGE_METADATA_URL, "forge_versions", input -> {
                 try {
                     ForgeVersionListHandler handler = new ForgeVersionListHandler();
                     saxParser.parse(new InputSource(new StringReader(input)), handler);
                     return handler.getVersions();
-                    // IOException is present here StringReader throws it only if the parser called close()
-                    // sooner than needed, which is a parser issue and not an I/O one
-                }catch (SAXException | IOException e) {
+                } catch (SAXException | IOException e) {
                     throw new DownloadUtils.ParseException(e);
                 }
             });
-        }catch (DownloadUtils.ParseException e) {
+        } catch (DownloadUtils.ParseException e) {
             e.printStackTrace();
             return null;
         }
-
     }
+
     public static String getInstallerUrl(String version) {
         return String.format(FORGE_INSTALLER_URL, version);
     }
 
-    public static void addAutoInstallArgs(Intent intent, File modInstallerJar, boolean createProfile) {
-        intent.putExtra("javaArgs", "-javaagent:"+ Tools.DIR_DATA+"/forge_installer/forge_installer.jar"
-                + (createProfile ? "=NPS" : "") + // No Profile Suppression
-                " -jar "+modInstallerJar.getAbsolutePath());
+    /**
+     * Modern Forge v2 installers (1.12.2-14.23.5.2851+ and all 1.13-1.21.x) include SimpleInstaller
+     * and an install_profile.json with a "spec" field, supporting fast headless --installClient CLI
+     * without Swing/Caciocavallo GUI overhead.
+     */
+    public static boolean supportsHeadlessCli(File modInstallerJar) {
+        if (modInstallerJar == null || !modInstallerJar.isFile()) return false;
+        try (ZipFile zip = new ZipFile(modInstallerJar)) {
+            if (zip.getEntry("net/minecraftforge/installer/SimpleInstaller.class") == null
+                    && zip.getEntry("net/neoforged/installer/SimpleInstaller.class") == null) {
+                return false;
+            }
+            ZipEntry prof = zip.getEntry("install_profile.json");
+            if (prof == null) return false;
+            try (InputStream in = zip.getInputStream(prof)) {
+                String raw = Tools.read(in);
+                com.google.gson.JsonObject root = com.google.gson.JsonParser.parseString(raw).getAsJsonObject();
+                return root.has("spec");
+            }
+        } catch (Exception ignored) {
+            return false;
+        }
     }
+
+    public static void addAutoInstallArgs(Intent intent, File modInstallerJar, boolean createProfile) {
+        if (supportsHeadlessCli(modInstallerJar)) {
+            intent.putExtra("pgHeadlessJar", modInstallerJar.getAbsolutePath());
+            intent.putExtra("pgHeadlessFlag", "--installClient");
+            intent.putExtra("pgCreateProfile", createProfile);
+            intent.putExtra("openLogOutput", true);
+            return;
+        }
+        intent.putExtra("javaArgs", "-javaagent:" + Tools.DIR_DATA + "/forge_installer/forge_installer.jar"
+                + (createProfile ? "=NPS" : "")
+                + " -jar " + modInstallerJar.getAbsolutePath());
+    }
+
     public static void addAutoInstallArgs(Intent intent, File modInstallerJar, String modpackFixupId) {
-        intent.putExtra("javaArgs", "-javaagent:"+ Tools.DIR_DATA+"/forge_installer/forge_installer.jar"
-                + "=\"" + modpackFixupId +"\"" +
-                " -jar "+modInstallerJar.getAbsolutePath());
+        if (supportsHeadlessCli(modInstallerJar)) {
+            intent.putExtra("pgHeadlessJar", modInstallerJar.getAbsolutePath());
+            intent.putExtra("pgHeadlessFlag", "--installClient");
+            intent.putExtra("pgCreateProfile", false);
+            intent.putExtra("pgModpackFixupId", modpackFixupId);
+            intent.putExtra("openLogOutput", true);
+            return;
+        }
+        intent.putExtra("javaArgs", "-javaagent:" + Tools.DIR_DATA + "/forge_installer/forge_installer.jar"
+                + "=\"" + modpackFixupId + "\""
+                + " -jar " + modInstallerJar.getAbsolutePath());
+    }
+
+    public static void addNeoForgeAutoInstallArgs(Intent intent, File modInstallerJar, boolean createProfile, String modpackFixupId) {
+        intent.putExtra("pgHeadlessJar", modInstallerJar.getAbsolutePath());
+        intent.putExtra("pgHeadlessFlag", "--install-client");
+        intent.putExtra("pgCreateProfile", createProfile);
+        if (modpackFixupId != null) {
+            intent.putExtra("pgModpackFixupId", modpackFixupId);
+        }
+        intent.putExtra("openLogOutput", true);
     }
 
     /**

@@ -28,31 +28,21 @@ public class ModLoader {
         this.minecraftVersion = minecraftVersion;
     }
 
-    /**
-     * Get the Version ID (the name of the mod loader in the versions/ folder)
-     * @return the Version ID as a string
-     */
     public String getVersionId() {
         switch (modLoaderType) {
             case MOD_LOADER_FORGE:
-                return minecraftVersion+"-forge-"+modLoaderVersion;
+                return minecraftVersion + "-forge-" + modLoaderVersion;
             case MOD_LOADER_FABRIC:
-                return "fabric-loader-"+modLoaderVersion+"-"+minecraftVersion;
+                return "fabric-loader-" + modLoaderVersion + "-" + minecraftVersion;
             case MOD_LOADER_QUILT:
-                return "quilt-loader-"+modLoaderVersion+"-"+minecraftVersion;
+                return "quilt-loader-" + modLoaderVersion + "-" + minecraftVersion;
             case MOD_LOADER_NEOFORGE:
-                return "neoforge-"+modLoaderVersion;
+                return "neoforge-" + modLoaderVersion;
             default:
                 return null;
         }
     }
 
-    /**
-     * Get the Runnable that needs to run in order to download the mod loader.
-     * The task will also install the mod loader if it does not require GUI installation
-     * @param listener the listener that gets notified of the installation status
-     * @return the task Runnable that needs to be ran
-     */
     public Runnable getDownloadTask(ModloaderDownloadListener listener) {
         switch (modLoaderType) {
             case MOD_LOADER_FORGE:
@@ -68,15 +58,6 @@ public class ModLoader {
         }
     }
 
-    /**
-     * Get the Intent to start the graphical installation of the mod loader.
-     * This method should only be ran after the download task of the specified mod loader finishes.
-     * This method returns null if the mod loader does not require GUI installation
-     * @param context the package resolving Context (can be the base context)
-     * @param modInstallerJar the JAR file of the mod installer, provided by ModloaderDownloadListener after the installation
-     *                        finishes.
-     * @return the Intent which the launcher needs to start in order to install the mod loader
-     */
     public Intent getInstallationIntent(Context context, File modInstallerJar) {
         Intent baseIntent = new Intent(context, JavaGUILauncherActivity.class);
         switch (modLoaderType) {
@@ -84,10 +65,8 @@ public class ModLoader {
                 ForgeUtils.addAutoInstallArgs(baseIntent, modInstallerJar, getVersionId());
                 return baseIntent;
             case MOD_LOADER_NEOFORGE:
-                return baseIntent
-                        .putExtra("javaArgs", "-jar "+modInstallerJar.getAbsolutePath()+" --install-client")
-                        .putExtra("openLogOutput", true)
-                        ;
+                ForgeUtils.addNeoForgeAutoInstallArgs(baseIntent, modInstallerJar, false, getVersionId());
+                return baseIntent;
             case MOD_LOADER_QUILT:
             case MOD_LOADER_FABRIC:
             default:
@@ -95,10 +74,6 @@ public class ModLoader {
         }
     }
 
-    /**
-     * Check whether the mod loader this object denotes requires GUI installation
-     * @return true if mod loader requires GUI installation, false otherwise
-     */
     public boolean requiresGuiInstallation() {
         switch (modLoaderType) {
             case MOD_LOADER_FORGE:

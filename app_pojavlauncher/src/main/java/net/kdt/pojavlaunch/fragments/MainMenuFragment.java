@@ -91,7 +91,7 @@ public class MainMenuFragment extends Fragment {
         bindPlayLabel(view);
         PgShell.maybeOnboard(requireActivity());
         if (!LauncherPreferences.DEFAULT_PREF.contains(ControlScheme.PREF)) {
-            ControlScheme.apply(requireContext(), ControlScheme.MODERN);
+            ControlScheme.apply(requireContext(), ControlScheme.AUTO);
         }
     }
 

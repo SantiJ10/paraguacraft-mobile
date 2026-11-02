@@ -192,36 +192,50 @@ public final class PgShell {
         title.setTypeface(Typeface.DEFAULT_BOLD);
         box.addView(title);
         TextView sub = new TextView(ctx);
-        sub.setText("Clásicos (botones compactos) o modernos (zonas más grandes). Después lo cambiás en Ajustes.");
+        sub.setText("Elegí Automático para que cambie solo entre PvP 1.8.9 y Survival 1.20+/26.3, o fijá un estilo.");
         sub.setTextColor(0xFFB8C4BC);
         sub.setTextSize(13);
         sub.setPadding(0, (int) (4 * d), 0, (int) (12 * d));
         box.addView(sub);
 
-        LinearLayout row = new LinearLayout(ctx);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        final View[] cards = new View[2];
-        cards[0] = schemeCard(ctx, d, "Controles clásicos",
-                "Botones compactos y etiquetas conocidas.", R.drawable.pg_ctrl_classic, !ControlScheme.isModern(), v -> {
-                    ControlScheme.apply(ctx, ControlScheme.CLASSIC);
-                    paintSchemeCards(cards, false);
-                });
-        cards[1] = schemeCard(ctx, d, "Controles modernos",
-                "Más limpio, zonas táctiles más grandes y menos etiquetas.", R.drawable.pg_ctrl_modern, ControlScheme.isModern(), v -> {
-                    ControlScheme.apply(ctx, ControlScheme.MODERN);
-                    paintSchemeCards(cards, true);
-                });
-        row.addView(cards[0]);
-        row.addView(cards[1]);
-        box.addView(row);
+        String[] schemeKeys = {
+                ControlScheme.AUTO,
+                ControlScheme.PVP,
+                ControlScheme.SURVIVAL,
+                ControlScheme.MODERN,
+                ControlScheme.CLASSIC
+        };
+        String[] schemeTitles = {
+                "Automático por versión (Recomendado)",
+                "PvP / 1.8.9 — Atacar grande, F5 en pulgar y Soltar",
+                "Survival 1.20+ / 26.3 — Segunda mano (F) y Chat",
+                "Modernos — Zonas amplias y limpias",
+                "Clásicos — Botones compactos tradicionales"
+        };
+        RadioGroup group = new RadioGroup(ctx);
+        String curScheme = ControlScheme.current();
+        for (int i = 0; i < schemeKeys.length; i++) {
+            RadioButton rb = new RadioButton(ctx);
+            rb.setText(schemeTitles[i]);
+            rb.setTextColor(0xFFFFFFFF);
+            rb.setId(i + 1);
+            rb.setChecked(schemeKeys[i].equals(curScheme));
+            final String chosen = schemeKeys[i];
+            rb.setOnClickListener(v -> ControlScheme.apply(ctx, chosen));
+            group.addView(rb);
+        }
+        box.addView(group);
 
         TextView edit = new TextView(ctx);
-        edit.setText("Personalizar botones…");
+        edit.setText("Abrir centro de controles y tamaño…");
         edit.setTextColor(0xFF2ECC71);
         edit.setPadding(0, (int) (12 * d), 0, 0);
         edit.setOnClickListener(v -> {
-            ControlScheme.ensureLayoutFiles(ctx);
-            ctx.startActivity(new Intent(ctx, CustomControlsActivity.class));
+            if (sWizardDlg != null) {
+                try { sWizardDlg.dismiss(); } catch (Exception ignored) {}
+            }
+            if (onboard) finishOnboard(activity);
+            Tools.swapFragment(activity, ControlHubFragment.class, ControlHubFragment.TAG, null);
         });
         box.addView(edit);
 
@@ -343,15 +357,17 @@ public final class PgShell {
     }
 
     public static void showRendererPicker(FragmentActivity activity) {
-        String[] values = activity.getResources().getStringArray(R.array.renderer_values);
-        String[] names = activity.getResources().getStringArray(R.array.renderer);
-        String[] labels = new String[values.length + 1];
-        String[] keys = new String[values.length + 1];
-        labels[0] = "Automático";
+        Tools.RenderersList compat = Tools.getCompatibleRenderers(activity);
+        java.util.List<String> values = compat.rendererIds;
+        String[] names = compat.rendererDisplayNames;
+        String[] labels = new String[values.size() + 1];
+        String[] keys = new String[values.size() + 1];
+        labels[0] = "Automático (recomendado)";
         keys[0] = RENDER_AUTO;
-        for (int i = 0; i < values.length; i++) {
-            keys[i + 1] = values[i];
-            labels[i + 1] = prettyRenderer(values[i], names.length > i ? names[i] : values[i]);
+        for (int i = 0; i < values.size(); i++) {
+            String val = values.get(i);
+            keys[i + 1] = val;
+            labels[i + 1] = prettyRenderer(val, names.length > i ? names[i] : val);
         }
         String cur = LauncherPreferences.DEFAULT_PREF.getString(PREF_RENDERER, RENDER_AUTO);
         if (cur == null || cur.isEmpty()) cur = RENDER_AUTO;

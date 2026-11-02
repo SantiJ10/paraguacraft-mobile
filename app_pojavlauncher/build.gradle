@@ -132,11 +132,11 @@ android {
         applicationId "net.paraguacraft.mobile"
         minSdkVersion 21
         targetSdkVersion 34
-        versionCode 10000024
+        versionCode 10000025
         versionName getVersionName()
         multiDexEnabled true //important
-        buildConfigField "int", "PG_MOBILE_VERSION_CODE", "25"
-        buildConfigField "String", "PG_MOBILE_VERSION", "\"0.1.24\""
+        buildConfigField "int", "PG_MOBILE_VERSION_CODE", "26"
+        buildConfigField "String", "PG_MOBILE_VERSION", "\"0.1.25\""
         resValue 'string', 'curseforge_api_key', getCFApiKey()
         externalNativeBuild {
             ndkBuild {
@@ -232,9 +232,13 @@ afterEvaluate {
     def componentJars = [
             ":forge_installer:jar",
             ":arc_dns_injector:jar",
-            ":MioLibPatcher:jar",
             ":jre_lwjgl3glfw:jar"
     ]
+    // Only rebuild MioLibPatcher.jar when our local Paraguacraft transformers are present;
+    // in CI, the upstream submodule lacks RenderPearl/FML/LaunchWrapper patches, so keep the committed JAR.
+    if (file("../MioLibPatcher/src/main/java/com/mio/libpatcher/transformer/RenderPearlTransformer.java").isFile()) {
+        componentJars.add(":MioLibPatcher:jar")
+    }
 
     tasks.withType(com.android.build.gradle.tasks.MergeSourceSetFolders).configureEach { t ->
         t.dependsOn(componentJars)

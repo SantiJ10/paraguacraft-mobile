@@ -28,6 +28,10 @@ import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
 import net.kdt.pojavlaunch.utils.JREUtils;
 import net.kdt.pojavlaunch.utils.MathUtils;
+import net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles;
+import net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile;
+import net.paraguacraft.mobile.DeviceTier;
+import net.paraguacraft.mobile.OptimizedInstaller;
 
 import org.apache.commons.io.IOUtils;
 import org.lwjgl.glfw.CallbackBridge;
@@ -39,8 +43,12 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -55,7 +63,7 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
     private GestureDetector mGestureDetector;
 
     private boolean mIsVirtualMouseEnabled;
-    
+
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,7 +75,7 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
             if (!latestLogFile.exists() && !latestLogFile.createNewFile())
                 throw new IOException("Failed to create a new log file");
             Logger.begin(latestLogFile.getAbsolutePath());
-        }catch (IOException e) {
+        } catch (IOException e) {
             Tools.showError(this, e, true);
         }
         MainActivity.GLOBAL_CLIPBOARD = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
@@ -99,29 +107,20 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
             float prevX = 0, prevY = 0;
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                // MotionEvent reports input details from the touch screen
-                // and other input controls. In this case, you are only
-                // interested in events where the touch position changed.
-                // int index = event.getActionIndex();
                 int action = event.getActionMasked();
-
                 float x = event.getX();
                 float y = event.getY();
-                float mouseX, mouseY;
-
-                mouseX = mMousePointerImageView.getX();
-                mouseY = mMousePointerImageView.getY();
+                float mouseX = mMousePointerImageView.getX();
+                float mouseY = mMousePointerImageView.getY();
 
                 if (mGestureDetector.onTouchEvent(event)) {
-                    sendScaledMousePosition(mouseX,mouseY);
+                    sendScaledMousePosition(mouseX, mouseY);
                     AWTInputBridge.sendMousePress(AWTInputEvent.BUTTON1_DOWN_MASK);
-                } else {
-                    if (action == MotionEvent.ACTION_MOVE) { // 2
-                        mouseX = Math.max(0, Math.min(CallbackBridge.physicalWidth, mouseX + x - prevX));
-                        mouseY = Math.max(0, Math.min(CallbackBridge.physicalHeight, mouseY + y - prevY));
-                        placeMouseAt(mouseX, mouseY);
-                        sendScaledMousePosition(mouseX, mouseY);
-                    }
+                } else if (action == MotionEvent.ACTION_MOVE) {
+                    mouseX = Math.max(0, Math.min(CallbackBridge.physicalWidth, mouseX + x - prevX));
+                    mouseY = Math.max(0, Math.min(CallbackBridge.physicalHeight, mouseY + y - prevY));
+                    placeMouseAt(mouseX, mouseY);
+                    sendScaledMousePosition(mouseX, mouseY);
                 }
 
                 prevY = y;
@@ -138,35 +137,35 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
                 AWTInputBridge.sendMousePress(AWTInputEvent.BUTTON1_DOWN_MASK);
                 return true;
             }
-
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_UP: // 1
-                case MotionEvent.ACTION_CANCEL: // 3
-                case MotionEvent.ACTION_POINTER_UP: // 6
-                    break;
-                case MotionEvent.ACTION_MOVE: // 2
-                    sendScaledMousePosition(x + mTextureView.getX(), y);
-                    break;
+            if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                sendScaledMousePosition(x + mTextureView.getX(), y);
             }
             return true;
         });
 
         try {
-
             placeMouseAt(CallbackBridge.physicalWidth / 2f, CallbackBridge.physicalHeight / 2f);
             Bundle extras = getIntent().getExtras();
-            if(extras == null) {
+            if (extras == null) {
                 finish();
                 return;
             }
+            final String headlessJar = extras.getString("pgHeadlessJar");
+            final String headlessFlag = extras.getString("pgHeadlessFlag", "--installClient");
+            final boolean createProfile = extras.getBoolean("pgCreateProfile", true);
+            final String modpackFixupId = extras.getString("pgModpackFixupId", null);
             final String javaArgs = extras.getString("javaArgs");
-            final Uri resourceUri = (Uri) extras.getParcelable("modUri");
-            if(extras.getBoolean("openLogOutput", false)) openLogOutput(null);
-            if (javaArgs != null) {
+            final Uri resourceUri = extras.getParcelable("modUri");
+            if (extras.getBoolean("openLogOutput", false) || headlessJar != null) {
+                openLogOutput(null);
+            }
+            if (headlessJar != null) {
+                startHeadlessModloaderInstaller(new File(headlessJar), headlessFlag, createProfile, modpackFixupId);
+            } else if (javaArgs != null) {
                 startModInstaller(null, javaArgs);
-            }else if(resourceUri != null) {
+            } else if (resourceUri != null) {
                 ProgressDialog barrierDialog = Tools.getWaitingDialog(this, R.string.multirt_progress_caching);
-                PojavApplication.sExecutorService.execute(()->{
+                PojavApplication.sExecutorService.execute(() -> {
                     startModInstallerWithUri(resourceUri);
                     runOnUiThread(barrierDialog::dismiss);
                 });
@@ -174,7 +173,6 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
         } catch (Throwable th) {
             Tools.showError(this, th, true);
         }
-
 
         getOnBackPressedDispatcher().addCallback(new OnBackPressedCallback(true) {
             @Override
@@ -184,24 +182,136 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
         });
     }
 
+    private void startHeadlessModloaderInstaller(File installerJar, String cliFlag,
+                                                 boolean createProfile, String modpackFixupId) {
+        new Thread(() -> {
+            Map<String, MinecraftProfile> beforeProfiles = new HashMap<>();
+            try {
+                LauncherProfiles.load();
+                if (LauncherProfiles.mainProfileJson != null && LauncherProfiles.mainProfileJson.profiles != null) {
+                    for (Map.Entry<String, MinecraftProfile> e : LauncherProfiles.mainProfileJson.profiles.entrySet()) {
+                        if (e.getValue() != null) {
+                            beforeProfiles.put(e.getKey(), new MinecraftProfile(e.getValue()));
+                        }
+                    }
+                }
+                LauncherProfiles.write();
+            } catch (Throwable ignored) {}
+
+            Runtime selectedRuntime = selectRuntime(installerJar);
+            if (selectedRuntime == null) return;
+
+            final Set<String> beforeKeys = new HashSet<>(beforeProfiles.keySet());
+            JREUtils.sBeforeSuccessExitHook = () -> {
+                try {
+                    LauncherProfiles.load();
+                    if (LauncherProfiles.mainProfileJson == null || LauncherProfiles.mainProfileJson.profiles == null) {
+                        return;
+                    }
+                    Map<String, MinecraftProfile> cur = LauncherProfiles.mainProfileJson.profiles;
+                    String targetKey = null;
+                    for (String k : cur.keySet()) {
+                        if (!beforeKeys.contains(k)) {
+                            targetKey = k;
+                            break;
+                        }
+                    }
+                    if (targetKey == null) {
+                        for (String k : cur.keySet()) {
+                            if ("forge".equalsIgnoreCase(k) || "neoforge".equalsIgnoreCase(k)) {
+                                targetKey = k;
+                                break;
+                            }
+                        }
+                    }
+                    MinecraftProfile installed = targetKey != null ? cur.get(targetKey) : null;
+                    String installedVerId = installed != null ? installed.lastVersionId : null;
+
+                    if (modpackFixupId != null && installedVerId != null && !installedVerId.isEmpty()) {
+                        for (Map.Entry<String, MinecraftProfile> entry : cur.entrySet()) {
+                            if (entry.getKey().equals(targetKey) || entry.getValue() == null) continue;
+                            if (modpackFixupId.equals(entry.getValue().lastVersionId)) {
+                                entry.getValue().lastVersionId = installedVerId;
+                                DeviceTier.stampProfile(entry.getValue());
+                            }
+                        }
+                    }
+
+                    if (targetKey != null) {
+                        MinecraftProfile prev = beforeProfiles.get(targetKey);
+                        if (!createProfile) {
+                            if (prev != null) cur.put(targetKey, prev);
+                            else cur.remove(targetKey);
+                        } else {
+                            if (prev != null && prev.lastVersionId != null
+                                    && !prev.lastVersionId.equals(installedVerId)) {
+                                String copyKey = targetKey + "_" + Math.abs(new Random().nextInt(9000) + 1000);
+                                while (cur.containsKey(copyKey)) {
+                                    copyKey = targetKey + "_" + Math.abs(new Random().nextInt(9000) + 1000);
+                                }
+                                cur.put(copyKey, prev);
+                            }
+                            if (installed != null) {
+                                if (installed.name == null || installed.name.isEmpty()
+                                        || "forge".equalsIgnoreCase(installed.name)
+                                        || "neoforge".equalsIgnoreCase(installed.name)) {
+                                    installed.name = installedVerId != null ? installedVerId : targetKey;
+                                }
+                                DeviceTier.stampProfile(installed);
+                                String pendingOpt = DEFAULT_PREF.getString(OptimizedInstaller.PREF_PENDING_FORGE_MC, null);
+                                if (pendingOpt == null || pendingOpt.isEmpty()) {
+                                    DEFAULT_PREF.edit()
+                                            .putString(LauncherPreferences.PREF_KEY_CURRENT_PROFILE, targetKey)
+                                            .commit();
+                                }
+                            }
+                        }
+                    }
+                    LauncherProfiles.write();
+                } catch (Throwable e) {
+                    Log.w("JavaGUILauncher", "Failed post-install profile sync", e);
+                }
+                runOnUiThread(() -> Toast.makeText(
+                        JavaGUILauncherActivity.this,
+                        "Instalador completado correctamente.",
+                        Toast.LENGTH_SHORT).show());
+            };
+
+            JREUtils.redirectAndPrintJRELog();
+            try {
+                List<String> javaArgList = new ArrayList<>();
+                javaArgList.add("-Djava.awt.headless=true");
+                javaArgList.add("-jar");
+                javaArgList.add(installerJar.getAbsolutePath());
+                javaArgList.add(cliFlag);
+                javaArgList.add(Tools.DIR_GAME_NEW);
+                Logger.appendToLog("Paraguacraft Headless Installer: " + Arrays.toString(javaArgList.toArray(new String[0])));
+                JREUtils.launchJavaVM(this, selectedRuntime, null, javaArgList, LauncherPreferences.PREF_CUSTOM_JAVA_ARGS);
+            } catch (Throwable th) {
+                JREUtils.sBeforeSuccessExitHook = null;
+                Tools.showError(this, th, true);
+            }
+        }, "JREMainThread").start();
+    }
+
     private void startModInstallerWithUri(Uri uri) {
         try {
             File cacheFile = new File(getCacheDir(), "mod-installer-temp");
             InputStream contentStream = getContentResolver().openInputStream(uri);
-            if(contentStream == null) throw new IOException("Failed to open content stream");
+            if (contentStream == null) throw new IOException("Failed to open content stream");
             try (FileOutputStream fileOutputStream = new FileOutputStream(cacheFile)) {
                 IOUtils.copy(contentStream, fileOutputStream);
             }
             contentStream.close();
             startModInstaller(cacheFile, null);
-        }catch (IOException e) {
+        } catch (IOException e) {
             Tools.showError(this, e, true);
         }
     }
 
     public Runtime selectRuntime(File modFile) {
         int javaVersion = getJavaVersion(modFile);
-        if(javaVersion == -1) {
+        if (javaVersion == -1) {
             finalErrorDialog(getString(R.string.execute_jar_failed_to_read_file));
             return null;
         }
@@ -237,12 +347,11 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
             }
         }
         String nearestRuntime = exactRuntime != null ? exactRuntime : MultiRTUtils.getNearestJreName(javaVersion);
-        if(nearestRuntime == null) {
+        if (nearestRuntime == null) {
             finalErrorDialog(getString(R.string.multirt_nocompatiblert, javaVersion));
             return null;
         }
-        Runtime selectedRuntime = MultiRTUtils.forceReread(nearestRuntime);
-        return selectedRuntime;
+        return MultiRTUtils.forceReread(nearestRuntime);
     }
 
     private boolean shouldPreferJava17ForInstaller(File modFile) {
@@ -259,13 +368,10 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
 
     private File findModPath(List<String> argList) {
         int argsSize = argList.size();
-        for(int i = 0; i < argsSize; i++) {
-            // Look for the -jar argument
-            if(!argList.get(i).equals("-jar")) continue;
-            int pathIndex = i+1;
-            // Check if the supposed path is out of the argument bounds
-            if(pathIndex >= argsSize) return null;
-            // Use the path as a file
+        for (int i = 0; i < argsSize; i++) {
+            if (!argList.get(i).equals("-jar")) continue;
+            int pathIndex = i + 1;
+            if (pathIndex >= argsSize) return null;
             return new File(argList.get(pathIndex));
         }
         return null;
@@ -274,35 +380,30 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
     private void startModInstaller(File modFile, String javaArgs) {
         new Thread(() -> {
             try {
-                net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.load();
-                net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.write();
+                LauncherProfiles.load();
+                LauncherProfiles.write();
             } catch (Throwable ignored) {}
-            // Maybe replace with more advanced arg parsing logic later
             List<String> argList = javaArgs != null ? Arrays.asList(javaArgs.split(" ")) : null;
             File selectedMod = modFile;
-            if(selectedMod == null && argList != null) {
-                // If modFile is not specified directly, try to extract the -jar argument from the javaArgs
+            if (selectedMod == null && argList != null) {
                 selectedMod = findModPath(argList);
             }
             Runtime selectedRuntime;
-            if(selectedMod == null || DEFAULT_PREF.getBoolean("disable_autojre_select", false)) {
-                // If we are unable to find out the path to the mod or the user explicitly desires so, we use the default runtime
+            if (selectedMod == null || DEFAULT_PREF.getBoolean("disable_autojre_select", false)) {
                 selectedRuntime = MultiRTUtils.forceReread(LauncherPreferences.PREF_DEFAULT_RUNTIME);
-            }else {
-                // Autoselect it properly in the other case.
+            } else {
                 selectedRuntime = selectRuntime(selectedMod);
-                // If the selection failed, just return. The autoselect function has already shown the dialog.
-                if(selectedRuntime == null) return;
+                if (selectedRuntime == null) return;
             }
             launchJavaRuntime(selectedRuntime, modFile, argList);
         }, "JREMainThread").start();
     }
 
     private void finalErrorDialog(CharSequence msg) {
-        runOnUiThread(()-> new AlertDialog.Builder(this)
+        runOnUiThread(() -> new AlertDialog.Builder(this)
                 .setTitle(R.string.global_error)
                 .setMessage(msg)
-                .setPositiveButton(android.R.string.ok, (d,w)->this.finish())
+                .setPositiveButton(android.R.string.ok, (d, w) -> this.finish())
                 .setCancelable(false)
                 .show());
     }
@@ -315,36 +416,33 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
         decorView.setSystemUiVisibility(uiOptions);
     }
 
-
-
     @SuppressLint("ClickableViewAccessibility")
     @Override
     public boolean onTouch(View v, MotionEvent e) {
         boolean isDown;
         switch (e.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN: // 0
-            case MotionEvent.ACTION_POINTER_DOWN: // 5
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN:
                 isDown = true;
                 break;
-            case MotionEvent.ACTION_UP: // 1
-            case MotionEvent.ACTION_CANCEL: // 3
-            case MotionEvent.ACTION_POINTER_UP: // 6
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+            case MotionEvent.ACTION_POINTER_UP:
                 isDown = false;
                 break;
             default:
                 return false;
         }
-        
+
         switch (v.getId()) {
             case R.id.installmod_mouse_pri:
                 AWTInputBridge.sendMousePress(AWTInputEvent.BUTTON1_DOWN_MASK, isDown);
                 break;
-                
             case R.id.installmod_mouse_sec:
                 AWTInputBridge.sendMousePress(AWTInputEvent.BUTTON3_DOWN_MASK, isDown);
                 break;
         }
-        if(isDown) switch(v.getId()) {
+        if (isDown) switch (v.getId()) {
             case R.id.installmod_window_moveup:
                 AWTInputBridge.nativeMoveWindow(0, -10);
                 break;
@@ -367,15 +465,14 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
     }
 
     @SuppressWarnings("SuspiciousNameCombination")
-    void sendScaledMousePosition(float x, float y){
-        // Clamp positions to the borders of the usable view, then scale them
+    void sendScaledMousePosition(float x, float y) {
         x = androidx.core.math.MathUtils.clamp(x, mTextureView.getX(), mTextureView.getX() + mTextureView.getWidth());
         y = androidx.core.math.MathUtils.clamp(y, mTextureView.getY(), mTextureView.getY() + mTextureView.getHeight());
 
         AWTInputBridge.sendMousePos(
                 (int) MathUtils.map(x, mTextureView.getX(), mTextureView.getX() + mTextureView.getWidth(), 0, AWTCanvasView.AWT_CANVAS_WIDTH),
                 (int) MathUtils.map(y, mTextureView.getY(), mTextureView.getY() + mTextureView.getHeight(), 0, AWTCanvasView.AWT_CANVAS_HEIGHT)
-                );
+        );
     }
 
     public void forceClose(View v) {
@@ -398,19 +495,18 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
         JREUtils.redirectAndPrintJRELog();
         try {
             List<String> javaArgList = new ArrayList<>();
-            // Enable Caciocavallo
-            Tools.getCacioJavaArgs(javaArgList,runtime.javaVersion == 8, this);
-            if(javaArgs != null) {
+            Tools.getCacioJavaArgs(javaArgList, runtime.javaVersion == 8, this);
+            if (javaArgs != null) {
                 javaArgList.addAll(javaArgs);
             }
-            if(modFile != null) {
+            if (modFile != null) {
                 javaArgList.add("-jar");
                 javaArgList.add(modFile.getAbsolutePath());
             }
 
             Logger.appendToLog("Info: Java arguments: " + Arrays.toString(javaArgList.toArray(new String[0])));
 
-            JREUtils.launchJavaVM(this, runtime,null,javaArgList, LauncherPreferences.PREF_CUSTOM_JAVA_ARGS);
+            JREUtils.launchJavaVM(this, runtime, null, javaArgList, LauncherPreferences.PREF_CUSTOM_JAVA_ARGS);
         } catch (Throwable th) {
             Tools.showError(this, th, true);
         }
@@ -419,6 +515,7 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
     public void toggleKeyboard(View view) {
         mTouchCharInput.switchKeyboardState();
     }
+
     public void performCopy(View view) {
         AWTInputBridge.sendKey(' ', AWTInputEvent.VK_CONTROL, 1);
         AWTInputBridge.sendKey(' ', AWTInputEvent.VK_C);
@@ -432,37 +529,38 @@ public class JavaGUILauncherActivity extends BaseActivity implements View.OnTouc
     }
 
     public int getJavaVersion(File modFile) {
-        try (ZipFile zipFile = new ZipFile(modFile)){
+        try (ZipFile zipFile = new ZipFile(modFile)) {
             ZipEntry manifest = zipFile.getEntry("META-INF/MANIFEST.MF");
-            if(manifest == null) return -1;
+            if (manifest == null) return -1;
 
             String manifestString = Tools.read(zipFile.getInputStream(manifest));
             String mainClass = Tools.extractUntilCharacter(manifestString, "Main-Class:", '\n');
-            if(mainClass == null) return -1;
+            if (mainClass == null) return -1;
 
             mainClass = mainClass.trim().replace('.', '/') + ".class";
             ZipEntry mainClassFile = zipFile.getEntry(mainClass);
-            if(mainClassFile == null) return -1;
+            if (mainClassFile == null) return -1;
 
             InputStream classStream = zipFile.getInputStream(mainClassFile);
             byte[] bytesWeNeed = new byte[8];
             int readCount = classStream.read(bytesWeNeed);
             classStream.close();
-            if(readCount < 8) return -1;
+            if (readCount < 8) return -1;
 
             ByteBuffer byteBuffer = ByteBuffer.wrap(bytesWeNeed);
-            if(byteBuffer.getInt() != 0xCAFEBABE) return -1;
+            if (byteBuffer.getInt() != 0xCAFEBABE) return -1;
             short minorVersion = byteBuffer.getShort();
             short majorVersion = byteBuffer.getShort();
-            Log.i("JavaGUILauncher", majorVersion+","+minorVersion);
+            Log.i("JavaGUILauncher", majorVersion + "," + minorVersion);
             return classVersionToJavaVersion(majorVersion);
-        }catch (Exception e) {
+        } catch (Exception e) {
             Log.e("JavaVersion", "Exception thrown", e);
             return -1;
         }
     }
+
     public static int classVersionToJavaVersion(int majorVersion) {
-        if(majorVersion < 46) return 2; // there isn't even an arm64 port of jre 1.1 (or anything before 1.8 in fact)
+        if (majorVersion < 46) return 2;
         return majorVersion - 44;
     }
 }
